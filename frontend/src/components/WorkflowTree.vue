@@ -219,11 +219,20 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
         currentSelectedIds.splice(index, 1);
         // (v25 logic) 立即更新 DOM (移除蓝色边框)
         divNode.classList.remove('selected');
+
+        emit('update:selectedIds', currentSelectedIds);
       } else {
-        // (v24 logic) 它未被选中，添加到数组
-        currentSelectedIds.push(nodeId);
-        // (v25 logic) 立即更新 DOM (添加蓝色边框)
-        divNode.classList.add('selected');
+        if(currentSelectedIds.length < 2){
+          // (v24 logic) 它未被选中，添加到数组
+          currentSelectedIds.push(nodeId);
+          // (v25 logic) 立即更新 DOM (添加蓝色边框)
+          divNode.classList.add('selected');
+
+          emit('update:selectedIds', currentSelectedIds);
+        }else{
+          console.warn("最多只能选择两个父节点")
+        }
+        
       }
       // 2. (最后) 再去通知 Vue 更新正确的完整状态
       //newSelectedIds = currentSelectedIds;
@@ -232,7 +241,7 @@ function renderTree(svgElement: SVGSVGElement, allNodesData: AppNode[], selected
         'color: #BADA55; font-weight: bold;',          
         currentSelectedIds // 打印出我们将要发送的新数组       
       );
-      emit('update:selectedIds', currentSelectedIds);
+      // emit('update:selectedIds', currentSelectedIds);
     });
 
     // 2. (核心) 根据 props.selectedIds 更新选中样式

@@ -137,7 +137,7 @@
     },
     "class_type": "KSamplerAdvanced",
     "_meta": {
-      "title": "K采样器（高级）"
+      "title": "KSamplerAdvanced2"
     }
   },
   "58": {
@@ -170,7 +170,7 @@
     },
     "class_type": "KSamplerAdvanced",
     "_meta": {
-      "title": "K采样器（高级）"
+      "title": "KSamplerAdvanced"
     }
   },
   "60": {
@@ -183,7 +183,7 @@
     },
     "class_type": "CreateVideo",
     "_meta": {
-      "title": "创建视频"
+      "title": "CreateVideo"
     }
   },
   "61": {
@@ -207,7 +207,7 @@
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "加载图像"
+      "title": "LoadLastImage"
     }
   },
   "67": {
@@ -239,7 +239,7 @@
     },
     "class_type": "WanFirstLastFrameToVideo",
     "_meta": {
-      "title": "WanFirstLastFrameToVideo"
+      "title": "Size_Setting"
     }
   },
   "68": {
@@ -248,7 +248,7 @@
     },
     "class_type": "LoadImage",
     "_meta": {
-      "title": "加载图像"
+      "title": "LoadStartImage"
     }
   },
   "91": {
