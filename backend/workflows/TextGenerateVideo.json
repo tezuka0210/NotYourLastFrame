@@ -142,7 +142,7 @@
     },
     "class_type": "KSamplerAdvanced",
     "_meta": {
-      "title": "K采样器（高级）"
+      "title": "KSamplerAdvanced2"
     }
   },
   "82": {
@@ -225,7 +225,7 @@
     },
     "class_type": "CreateVideo",
     "_meta": {
-      "title": "创建视频"
+      "title": "CreateVideo"
     }
   },
   "89": {

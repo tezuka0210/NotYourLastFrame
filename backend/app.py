@@ -234,7 +234,7 @@ def view_file():
                 rv = Response(data, 206, mimetype=mime_type)
                 rv.headers.add("Content-Range", f"bytes {start}-{end}/{file_size}")
                 rv.headers.add("Accept-Ranges", "bytes")
-                #rv.headers.add("Content-Length", str(length))
+                rv.headers.add("Content-Length", str(length))
                 rv.headers.add("X-Content-Type-Options", "nosniff")
                 return rv
             else:
@@ -448,19 +448,39 @@ def create_node():
         if prompt_negative_node_id and 'negative_prompt' in parameters:
             workflow[prompt_negative_node_id]["inputs"]["text"] = parameters['negative_prompt']
 
-        # WIDTH HEIGHT LENGTH BATCH_SIZE SPEED
+        # WIDTH HEIGHT LENGTH BATCH_SIZE SPEED CAMERA
         size_node_id = find_node_id_by_title(workflow, "Size_Setting")
         if size_node_id:
             if 'width' in parameters:
                 workflow[size_node_id]["inputs"]["width"] = parameters['width']
             if 'height' in parameters:
                 workflow[size_node_id]["inputs"]["height"] = parameters['height']
-            if 'batch_size' in parameters:
+            if 'batch_size' in parameters and workflow != 'CameraControl':
                 workflow[size_node_id]["inputs"]["batch_size"] = parameters['batch_size']
             if 'length' in parameters:
                 workflow[size_node_id]["inputs"]["length"] = parameters['length']
             if 'speed' in parameters:
                 workflow[size_node_id]["inputs"]["speed"] = parameters['speed']
+            if 'camera_pose' in parameters:
+                workflow[size_node_id]["inputs"]["camera_pose"] = parameters['camera_pose']
+        # Camera Control batch_size
+        cameraSize_node_id = find_node_id_by_title(workflow, "WanCameraImageToVideo")
+        if cameraSize_node_id:
+            if 'batch_size' in parameters:
+                workflow[cameraSize_node_id]["inputs"]["batch_size"] = parameters['batch_size']
+        # RIFE
+        rife_node_id = find_node_id_by_title(workflow,"RIFE VFI")
+        if rife_node_id:
+            if 'multiplier' in parameters:
+                workflow[rife_node_id]["inputs"]["multiplier"] = parameters['multiplier']
+
+        # CANNY
+        canny_node_id = find_node_id_by_title(workflow,"Canny")
+        if canny_node_id:
+            if 'low_threshold' in parameters:
+                workflow[canny_node_id]["inputs"]["low_threshold"] = parameters['low_threshold']
+            if 'high_threshold' in parameters:
+                workflow[canny_node_id]["inputs"]["high_threshold"] = parameters['high_threshold']
 
         # KSAMPLE
         sampler_node_id = find_node_id_by_title(workflow, "KSampler")
@@ -479,6 +499,34 @@ def create_node():
         if guidance_node_id and 'guidance' in parameters:
             workflow[guidance_node_id]["inputs"]["guidance"] = parameters['guidance']
 
+        # FPS
+        fps_node_id = find_node_id_by_title(workflow, "CreateVideo")
+        if fps_node_id:
+            if 'fps' in parameters:
+                workflow[fps_node_id]["inputs"]["fps"] = parameters['fps']
+        # video seed
+        sampleradv_node_id = find_node_id_by_title(workflow, "KSamplerAdvanced2")
+        if sampleradv_node_id:
+            if 'seed' in parameters:
+                workflow[sampleradv_node_id]["inputs"]["noise_seed"] = parameters['seed']
+        
+        # STITICH
+        stitch_node_id = find_node_id_by_title(workflow,"Image Stitch")
+        if stitch_node_id:
+            if 'stitch' in parameters:
+                workflow[stitch_node_id]["inputs"]["noise_seed"] = parameters['stitch']
+
+        # REMBG
+        rembg_node_id = find_node_id_by_title(workflow,"Image Rembg (Remove Background)")
+        if rembg_node_id:
+            if 'model' in parameters:
+                workflow[stitch_node_id]["inputs"]["model"] = parameters['model']
+            if 'foreground_threshold' in parameters:
+                workflow[stitch_node_id]["inputs"]["alpha_matting_foreground_threshold"] = parameters['foreground_threshold']
+            if 'background_threshold' in parameters:
+                workflow[stitch_node_id]["inputs"]["alpha_matting_background_threshold"] = parameters['background_threshold']
+            if 'erode_size' in parameters:
+                workflow[stitch_node_id]["inputs"]["alpha_matting_erode_size"] = parameters['erode_size']
 
     # try:
         # --- 调用ComfyUI并等待结果 ---

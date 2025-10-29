@@ -73,7 +73,7 @@
     },
     "class_type": "KSamplerAdvanced",
     "_meta": {
-      "title": "KSamplerAdvanced"
+      "title": "KSamplerAdvanced2"
     }
   },
   "87": {
@@ -137,7 +137,7 @@
     },
     "class_type": "CreateVideo",
     "_meta": {
-      "title": "创建视频"
+      "title": "CreateVideo"
     }
   },
   "95": {

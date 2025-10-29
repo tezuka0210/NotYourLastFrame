@@ -1,1 +1,100 @@
 前端界面：/backend/templates/index.html
+
+- 工作流存储位置：video_tree/backend/workflows
+  - CameraControl.json 运镜工作流
+    - CLIP Text Encode (Negative Prompt) > text
+    - CLIP Text Encode (Positive Prompt) > text
+    - KSamplerAdvanced2 > noise_seed
+    - LoadImage > image
+    - CreateVideo > fps
+    - Size_Setting > camera_pose（可选Pan Up, Pan Down, Pan Left, Pan Right, Zoom In, Zoom Out, Anti Clockwise (ACW), ClockWise (CW))
+    - Size_Setting > width
+    - Size_Setting > height
+    - Size_Setting > speed
+    - Size_Setting > length
+    - WanCameraImageToVideo > batch_size
+  - FrameInterpolation 补帧
+    - LoadVideo > file
+    - RIFE VFI > multiplier
+    - CreateVideo > fps
+  - ImageCanny 提取线稿
+    - LoadImage > image
+    - Canny > low_threshold
+    - Canny >high_threshold
+  - ImageGenerateImage
+    - 增加lora选择项
+      - 选择无 > ImageGenerateImage_Basic
+      - 选择canny > ImageGenerateImage_Canny
+    - LoadImage > image
+    - CLIP Text Encode (Positive Prompt) > text
+    - KSampler > seed
+    - KSampler > steps
+    - FluxGuidance > guidance
+    - Size_Setting > width
+    - Size_Setting > height
+    - Size_Setting > batch_size
+  - ImageGenerateVideo
+    - CLIP Text Encode (Negative Prompt) > text
+    - CLIP Text Encode (Positive Prompt) > text
+    - KSamplerAdvanced2 > noise_seed
+    - LoadImage > image
+    - CreateVideo > fps
+    - Size_Setting > width
+    - Size_Setting > height
+    - Size_Setting > batch_size
+    - Size_Setting > length
+  - ImageHDRestoration
+    - CLIP Text Encode (Positive Prompt) > text
+    - CLIP Text Encode (Negative Prompt) > text
+    - KSampler > seed
+    - KSampler > denoise
+    - LoadImage > image
+  - ImageMerging 双图合并
+    - LoadImage > image
+    - LoadImage(Move) > image
+    - Image Stitch > stitch (可选top, left, bottom, right）
+  - PartialRepainting局部重绘
+    - CLIP Text Encode (Positive Prompt) > text
+    - KSampler > seed
+    - KSampler > steps
+    - FluxGuidance > guidance
+    - LoadImage > image
+    - LoadImage （Mask) > image
+  - Put_It_Here
+    - CLIP Text Encode (Positive Prompt) > text
+    - KSampler > seed
+    - KSampler > steps
+    - FluxGuidance > guidance
+    - LoadImage > image
+    - LoadImage （Mask) > image
+    - RepeatLatentBatch > amount
+  - RemoveBackground去除背景
+    - LoadImage > image
+    - Image Rembg (Remove Background) > model
+      - 可选：
+        - u2net：通用显著性检测，一般不如isnet-general-use
+        - u2netp：u2net的轻量级版本，轻量级的效果更差
+        - u2net_human_seg：针对人像分割训练的模型
+        - silueta：和u2net相同，大小减少到43Mb，方便在小内存机器上使用
+        - isnet-general-use ：一个新的通用的预训练模型。
+        - isnet-anime：专门针对动画人物的分割模型
+    - Image Rembg (Remove Background) >  alpha_matting_foreground_threshold
+    - Image Rembg (Remove Background) >  alpha_matting_background_threshold
+    - Image Rembg (Remove Background) >  alpha_matting_erode_size
+  - TextGenerateImage
+    - CLIP Text Encode (Positive Prompt) > text
+    - KSampler > seed
+    - KSampler > steps
+    - FluxGuidance > guidance
+    - Size_Setting > width
+    - Size_Setting > height
+    - Size_Setting > batch_size
+  - TextGenerateVideo
+    - CLIP Text Encode (Negative Prompt) > text
+    - CLIP Text Encode (Positive Prompt) > text
+    - KSamplerAdvanced2 > noise_seed
+    - CreateVideo > fps
+    - Size_Setting > width
+    - Size_Setting > height
+    - Size_Setting > batch_size
+    - Size_Setting > length

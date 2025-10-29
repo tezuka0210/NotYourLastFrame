@@ -29,7 +29,7 @@
     },
     "class_type": "KSamplerAdvanced",
     "_meta": {
-      "title":"KSamplerAdvanced"
+      "title":"KSamplerAdvanced2"
     }
   },
   "72": {
@@ -44,7 +44,7 @@
   },
   "73": {
     "inputs": {
-      "filename_prefix": "video/ComfyUI",
+      "filename_prefix": "video/ComfyUI_CameraControl",
       "format": "auto",
       "codec": "auto",
       "video-preview": "",
@@ -229,7 +229,7 @@
     },
     "class_type": "CreateVideo",
     "_meta": {
-      "title": "创建视频"
+      "title": "CreateVideo"
     }
   },
   "85": {

@@ -6,7 +6,7 @@
     },
     "class_type": "LoadVideo",
     "_meta": {
-      "title": "加载视频"
+      "title": "LoadVideo"
     }
   },
   "2": {
@@ -36,7 +36,7 @@
     },
     "class_type": "RIFE VFI",
     "_meta": {
-      "title": "RIFE VFI (recommend rife47 and rife49)"
+      "title": "RIFE VFI"
     }
   },
   "4": {
@@ -49,7 +49,7 @@
     },
     "class_type": "CreateVideo",
     "_meta": {
-      "title": "创建视频"
+      "title": "CreateVideo"
     }
   },
   "5": {

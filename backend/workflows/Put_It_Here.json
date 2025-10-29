@@ -237,7 +237,7 @@
     },
     "class_type": "RepeatLatentBatch",
     "_meta": {
-      "title": "复制Latent批次"
+      "title": "RepeatLatentBatch"
     }
   },
   "266": {
