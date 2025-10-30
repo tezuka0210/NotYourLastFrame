@@ -1,13 +1,48 @@
 <template>
   <div id="workflow-form" class="space-y-4">
-    <div>
+    <div v-if="props.selectedIds.length === 0">
       <label class="block text-sm font-medium text-gray-600 mb-1">父节点</label>
       <input
         type="text"
-        :value="selectedNodeText"
+        value="未选择 (将创建根节点)"
         class="w-full bg-gray-100 border border-gray-300 rounded-md p-2 text-gray-500 text-sm"
         readonly
       >
+    </div>
+    
+    <div v-else-if="props.selectedIds.length === 1">
+      <label class="block text-sm font-medium text-gray-600 mb-1">父节点:</label>
+      <input
+        type="text"
+        :value="`节点: ${parentNode1Id?.substring(0, 8)}...`"
+        class="w-full bg-gray-100 border border-gray-300 rounded-md p-2 text-gray-500 text-sm"
+        readonly
+      >
+    </div>
+
+    <div v-else-if="props.selectedIds.length === 2" class="space-y-2">
+      <p v-if="moduleId === 'ImageMerging'" class="text-xs font-medium text-green-600">
+        合并就绪
+      </p>
+      
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">父节点 1:</label>
+        <input
+          type="text"
+          :value="`节点: ${parentNode1Id?.substring(0, 8)}...`"
+          class="w-full bg-gray-100 border border-gray-300 rounded-md p-2 text-gray-500 text-sm"
+          readonly
+        >
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-600 mb-1">父节点 2:</label>
+        <input
+          type="text"
+          :value="`节点: ${parentNode2Id?.substring(0, 8)}...`"
+          class="w-full bg-gray-100 border border-gray-300 rounded-md p-2 text-gray-500 text-sm"
+          readonly
+        >
+      </div>
     </div>
 
     <div>
@@ -128,6 +163,17 @@ const emit = defineEmits<{
   (e: 'generate', moduleId: string, parameters: Record<string, any>): void;
   (e: 'upload', file: File): void;
 }>()
+
+
+const parentNode1Id = computed(() => {
+  // 如果长度 >= 1，安全地返回第一个 ID
+  return props.selectedIds.length >= 1 ? props.selectedIds[0] : null;
+});
+
+const parentNode2Id = computed(() => {
+  // 如果长度 >= 2，安全地返回第二个 ID
+  return props.selectedIds.length >= 2 ? props.selectedIds[1] : null;
+});
 
 
 const moduleId = ref('');
@@ -331,7 +377,7 @@ watch(() => props.initialModuleId, (newModuleId) => {
 
 // 动态计算父节点输入框的显示文本
 // 这替换了原版 JS 中的 updateSelectedNodeInput() 函数
-const selectedNodeText = computed(() => {
+/*const selectedNodeText = computed(() => {
   // VVVV 添加这个日志 VVVV
   console.log(
     `%c[Form] 5. Computed 正在重新计算...`,
@@ -360,7 +406,7 @@ const selectedNodeText = computed(() => {
   }
 
   return `已选择 (${count}) 个节点`
-})
+})*/
 
 
 watch(() => props.selectedIds, (newIds) => {
