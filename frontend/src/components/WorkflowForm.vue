@@ -1,163 +1,115 @@
 <template>
-  <div class="bg-white rounded shadow p-6">
-    
-    <div id="workflow-form" class="space-y-4">
-      <div>
-        <label class="block text-sm font-medium text-gray-600 mb-1">父节点</label>
-        <input
-          id="selected-node-input"
-          type="text"
-          :value="selectedNodeText"
-          class="w-full bg-gray-100 border border-gray-300 rounded-md p-2 text-gray-500 text-sm"
-          readonly
+  <div id="workflow-form" class="space-y-4">
+    <div>
+      <label class="block text-sm font-medium text-gray-600 mb-1">父节点</label>
+      <input
+        type="text"
+        :value="selectedNodeText"
+        class="w-full bg-gray-100 border border-gray-300 rounded-md p-2 text-gray-500 text-sm"
+        readonly
+      >
+    </div>
+
+    <div>
+      <label for="module-select" class="block text-sm font-medium text-gray-600 mb-1">选择模块</label>
+      <select id="module-select" v-model="moduleId" class="w-full bg-white border border-gray-300 rounded-md p-2">
+        <option
+          v-for="module in availableModules"
+          :key="module.id"
+          :value="module.id"
         >
-      </div>
+          {{ module.name }}
+        </option>
+      </select>
+    </div>
 
-      <div>
-        <label for="module-select" class="block text-sm font-medium text-gray-600 mb-1">选择模块</label>
-        <select id="module-select" v-model="moduleId" class="w-full bg-white border border-gray-300 rounded-md p-2">
-          <option
-            v-for="module in availableModules"
-            :key="module.id"
-            :value="module.id"
-          >
-            {{ module.name }}
-          </option>
-          </select>
-      </div>
+    <div
+      v-for="param in currentParameters"
+      :key="param.id"
+      class="parameter-item"
+    >
+      <label :for="param.id" class="block text-sm font-medium text-gray-600 mb-1">
+        {{ param.label }}
+      </label>
+      <input
+        v-if="param.type === 'number'"
+        type="number"
+        :id="param.id"
+        v-model.number="parameterValues[param.id]"
+        :step="param.step"
+        :min="param.min"
+        :max="param.max"
+        :placeholder="param.placeholder"
+        @keydown.enter.prevent
+        class="w-full bg-white border border-gray-300 rounded-md p-2"
+      />
 
-      <div v-if="props.initialWorkflowType ==='image' || props.initialWorkflowType === 'video'">
-        <label for="prompt-input" class="block text-sm font-medium text-gray-600 mb-1">Prompt</label>
-        <textarea
-          id="prompt-input"
-          rows="4"
-          v-model="prompt"
-          class="w-full bg-white border border-gray-300 rounded-md p-2"
-          placeholder="请输入您的创意..."
-        ></textarea>
-      </div>
+      <input
+        v-else-if="param.type === 'text'"
+        type="text"
+        :id="param.id"
+        v-model="parameterValues[param.id]"
+        :placeholder="param.placeholder"
+        class="w-full bg-white border border-gray-300 rounded-md p-2"
+      />
 
-      <div class="grid grid-cols-2 gap-4">
-        <div v-if="props.initialWorkflowType ==='image'">
-          <label for="seed-input" class="block text-sm font-medium text-gray-600 mb-1">Seed</label>
-          <input
-            type="number"
-            id="seed-input"
-            v-model.number="seed"
-            @keydown.enter.prevent
-            class="w-full bg-white border border-gray-300 rounded-md p-2"
-            placeholder="随机"
-          >
-        </div>
-        <div v-if="props.initialWorkflowType ==='image'">
-          <label for="steps-input" class="block text-sm font-medium text-gray-600 mb-1">Steps</label>
-          <input
-            type="number"
-            id="steps-input"
-            v-model.number="steps"
-            @keydown.enter.prevent
-            class="w-full bg-white border border-gray-300 rounded-md p-2"
-          >
-        </div>
-        <div v-if="props.initialWorkflowType ==='image' || props.initialWorkflowType === 'video'">
-          <label for="cfg-input" class="block text-sm font-medium text-gray-600 mb-1">CFG</label>
-          <input
-            
-            type="number"
-            id="cfg-input"
-            step="0.1"
-            v-model.number="cfg"
-            @keydown.enter.prevent
-            class="w-full bg-white border border-gray-300 rounded-md p-2"
-          >
-        </div>
-        <div v-if="props.initialWorkflowType ==='image'">
-          <label for="denoise-input" class="block text-sm font-medium text-gray-600 mb-1">Denoise</label>
-          <input
-            type="number"
-            id="denoise-input"
-            step="0.05"
-            v-model.number="denoise"
-            @keydown.enter.prevent
-            class="w-full bg-white border border-gray-300 rounded-md p-2"
-          >
-        </div>
-      </div>
-      <div v-if="props.initialWorkflowType === 'video'">
-          <label for="noise_seed-input" class="block text-sm font-medium text-gray-600 mb-1">Seed</label>
-          <input
-            type="number"
-            id="noise_seed-input"
-            v-model.number="seed"
-            @keydown.enter.prevent
-            class="w-full bg-white border border-gray-300 rounded-md p-2"
-            placeholder="随机"
-          >
-        </div>
-
-      <div>
-        <label for="image-upload" class="block text-sm font-medium text-gray-600 mb-1">图片输入 (可选)</label>
-        <input
-          type="file"
-          id="image-upload"
-          ref="fileInputRef"
-          :disabled="props.isGenerating"
-          @change="onFileChange"
-          accept="image/*"
-          class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
+      <textarea
+        v-else-if="param.type === 'textarea'"
+        :id="param.id"
+        rows="4"
+        v-model="parameterValues[param.id]"
+        :placeholder="param.placeholder"
+        class="w-full bg-white border border-gray-300 rounded-md p-2"
+      ></textarea>
+      <select
+        v-else-if="param.type === 'select'"
+        :id="param.id"
+        v-model="parameterValues[param.id]"
+        class="w-full bg-white border border-gray-300 rounded-md p-2"
+      >
+        <option
+          v-for="option in param.options"
+          :key="option"
+          :value="option"
         >
-        <p class="text-xs text-gray-500 mt-1">提示：上传新图将覆盖父节点图像。</p>
-      </div>
+          {{ option }}
+        </option>
+      </select>
+    </div>
+    <div>
+      <label for="image-upload" class="block text-sm font-medium text-gray-600 mb-1">图片输入 (可选)</label>
+      <input
+        type="file"
+        id="image-upload"
+        ref="fileInputRef"
+        :disabled="isGenerating"
+        @change="onFileChange"
+        accept="image/*"
+        class="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-blue-100 file:text-blue-700 hover:file:bg-blue-200"
+      >
+      <p class="text-xs text-gray-500 mt-1">提示：上传新图将覆盖父节点图像。</p>
+    </div>
 
-      <div class="pt-2">
-        <button
-          id="generate-btn"
-          :disabled="isGenerating"
-          @click="onGenerateClick"
-          class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors disabled:bg-gray-400"
-        >
-          <span id="button-text">{{isGenerating ? '生成中...' : '开始生成' }}</span>
-          <div
-            id="button-loader"
-            :class="['loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6 ml-3', { 'hidden': !isGenerating }]"
-          ></div>
-        </button>
-      </div>
+    <div class="pt-2">
+      <button
+        id="generate-btn"
+        :disabled="isGenerating"
+        @click="onGenerateClick"
+        class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition-colors disabled:bg-gray-400"
+      >
+        <span id="button-text">{{ isGenerating ? '生成中...' : '开始生成' }}</span>
+        <div
+          id="button-loader"
+          :class="['loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-6 w-6 ml-3', { 'hidden': !isGenerating }]"
+        ></div>
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted , reactive } from 'vue'
 
-// (核心修改) 定义所有可用模块
-const allModules = [
-  { id: 'ImageCanny', name: 'ImageCanny', type: 'preprocess' },
-  { id: 'RemoveBackground', name: 'RemoveBackground', type: 'preprocess' },
-  { id: 'ImageMerging', name: 'ImageMerging', type: 'preprocess' },
-
-  { id: 'TextGenerateImage', name: 'TextToImage', type: 'image' },
-  { id: 'ImageGenerateImage_Basic', name: 'ImageToImage', type: 'image' },
-  { id: 'ImageGenerateImage_Canny', name: 'CannyToImage', type: 'image' },
-  { id: 'PartialRepainting', name: 'PartialRepainting', type: 'image' },
-  { id: 'ImageHDRestoration', name: 'ImageHDRestoration', type: 'image' },
-  { id: 'Put_It_Here', name: 'ObjectMigration', type: 'image' },
-
-  { id: 'TextGenerateVideo', name: 'TextToVideo', type: 'video' },
-  { id: 'ImageGenerateVideo', name: 'ImageToVideo', type: 'video' },
-  { id: 'CameraControl', name: 'CameraControl', type: 'video' },
-  { id: 'FrameInterpolation', name: 'FrameInterpolation', type: 'video' },
-  { id: 'FLFrameToVideo', name: 'FisrtAndLastFrameControl', type: 'video' },
-  
-];
-
-// (核心修改) 创建一个计算属性，根据传入的类型过滤模块列表
-const availableModules = computed(() => {
-  if (!props.initialWorkflowType) {
-    return allModules; // 如果没有类型，显示全部 (或只显示默认?)
-  }
-  return allModules.filter(module => module.type === props.initialWorkflowType);
-});
 
 // --- 1. Props (从 App.vue 传入) ---
 
@@ -177,15 +129,193 @@ const emit = defineEmits<{
   (e: 'upload', file: File): void;
 }>()
 
-// --- 3. 本地响应式状态 (Local State) ---
 
-// 表单字段的本地状态
-const moduleId = ref('TextGenerateImage')
-const prompt = ref('')
-const seed = ref<number | null>(null) // null 表示随机
-const steps = ref(20)
-const cfg = ref(7.5)
-const denoise = ref(0.8)
+const moduleId = ref('');
+
+// (核心修改) 定义所有可用模块
+const allModules = [
+  { id: 'ImageCanny', name: 'ImageCanny', type: 'preprocess' },
+  { id: 'RemoveBackground', name: 'RemoveBackground', type: 'preprocess' },
+  { id: 'ImageMerging', name: 'ImageMerging', type: 'preprocess' },
+
+  { id: 'TextGenerateImage', name: 'TextToImage', type: 'image' },
+  { id: 'ImageGenerateImage', name: 'ImageToImage', type: 'image' },
+  { id: 'PartialRepainting', name: 'PartialRepainting', type: 'image' },
+  { id: 'ImageHDRestoration', name: 'ImageHDRestoration', type: 'image' },
+  { id: 'Put_It_Here', name: 'ObjectMigration', type: 'image' },
+
+  { id: 'TextGenerateVideo', name: 'TextToVideo', type: 'video' },
+  { id: 'ImageGenerateVideo', name: 'ImageToVideo', type: 'video' },
+  { id: 'CameraControl', name: 'CameraControl', type: 'video' },
+  { id: 'FrameInterpolation', name: 'FrameInterpolation', type: 'video' },
+  { id: 'FLFrameToVideo', name: 'FisrtAndLastFrameControl', type: 'video' },
+  
+];
+
+
+
+// 定义工作流参数
+interface FormParameter {
+  id: string; // 用于 v-model 绑定和 key
+  label: string; // 显示的标签
+  type: 'number' | 'text' | 'textarea' | 'select'; // 输入框类型
+  defaultValue: any; // 默认值
+  // 可选属性
+  options?: string[]; // 用于 select
+  placeholder?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+
+const workflowParameters: Record<string, FormParameter[]> = {
+  // --- 预处理 ---
+  'ImageCanny': [
+    { id: 'low_threshold', label: 'Low Threshold', type: 'number', defaultValue: 0.1, step:0.01, min: 0, max: 1  },
+    { id: 'high_threshold', label: 'High Threshold', type: 'number', defaultValue: 0.8, step:0.01, min: 0, max: 1  },
+  ],
+  'RemoveBackground': [
+    { id: 'model', label: 'Model', type: 'select', options: ['u2net', 'u2netp','silueta','isnet-general-use','isnet-anime'], defaultValue: 'u2net' },
+    { id: 'foreground_threshold', label:'foreground_threshold', type: 'number', defaultValue:240},
+    { id: 'background_threshold', label:'background_threshold', type: 'number', defaultValue:10},
+    { id: 'erode_size', label:'erode_size', type: 'number', defaultValue:10},
+  ],
+  'ImageMerging': [
+    {id:'stitch', label:'image stitch',type:'select', options:['top', 'left', 'bottom', 'right'], defaultValue:'right'},
+  ],
+
+
+  // --- 图片生成 --- Put it here还没做！！！！
+  'TextGenerateImage': [
+    { id: 'positive_prompt', label: 'Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your creative prompt...' },
+    { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'steps', label: 'Steps', type: 'number', defaultValue: 20 },
+    { id: 'guidance', label: 'Guidance', type: 'number', defaultValue: 7.5, step: 0.1 },
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1024},
+    { id: 'height', label: 'height', type: 'number',defaultValue: 512},
+    { id: 'batch_size', label: 'batch_size', type:'number', defaultValue:1}
+  ],
+  'ImageGenerateImage': [
+    { id:'lora_selector', label:'LORA',type:'select', options: ['None','Canny'], defaultValue:'None'},
+    { id: 'positive_prompt', label: 'Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your creative prompt...' },
+    { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'steps', label: 'Steps', type: 'number', defaultValue: 20 },
+    { id: 'guidance', label: 'Guidance', type: 'number', defaultValue: 7.5, step: 0.1 },
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1024},
+    { id: 'height', label: 'height', type: 'number',defaultValue: 512},
+    { id: 'batch_size', label: 'batch_size', type:'number', defaultValue:1}
+  ],
+  'ImageHDRestoration':[
+    { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
+    { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
+    { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'denoise', label: 'denoise', type: 'number', defaultValue: 0.1, step: 0.01},
+  ],
+  'PartialRepainting':[
+    { id: 'positive_prompt', label: 'Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your creative prompt...' },
+    { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'steps', label: 'Steps', type: 'number', defaultValue: 20 },
+    { id: 'guidance', label: 'Guidance', type: 'number', defaultValue: 7.5, step: 0.1 },
+  ],
+  // --- 视频生成 ---
+  'TextGenerateVideo': [
+    { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
+    { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
+    { id: 'noise_seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step:1},
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1024},
+    { id: 'height', label: 'height', type: 'number',defaultValue: 512},
+    { id: 'length', label: 'length', type: 'number', defaultValue: 41, step:8},
+    { id: 'batch_size', label: 'batch_size', type:'number', defaultValue:1}
+  ],
+  'ImageGenerateVideo': [
+    { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
+    { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
+    { id: 'noise_seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step:1},
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1024},
+    { id: 'height', label: 'height', type: 'number',defaultValue: 512},
+    { id: 'length', label: 'length', type: 'number', defaultValue: 41, step:8},
+    { id: 'batch_size', label: 'batch_size', type:'number', defaultValue:1}
+  ],
+  'FLFrameToVideo': [
+    { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
+    { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
+    { id: 'noise_seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step:1},
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1024},
+    { id: 'height', label: 'height', type: 'number',defaultValue: 512},
+    { id: 'length', label: 'length', type: 'number', defaultValue: 41, step:8},
+    { id: 'batch_size', label: 'batch_size', type:'number', defaultValue:1}
+  ],
+  'CameraControl': [
+    { id: 'positive_prompt', label: 'Positive Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
+    { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
+    { id: 'noise_seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'camera_pose', label:'camera_pose', type:'select', options:['Pan Up', 'Pan Down', 'Pan Left', 'Pan Right', 'Zoom In', 'Zoom Out', 'Anti Clockwise (ACW)', 'ClockWise (CW)'], defaultValue : 'Pan Up'},
+    { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step:1},
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1024},
+    { id: 'height', label: 'height', type: 'number',defaultValue: 512},
+    { id: 'length', label: 'length', type: 'number', defaultValue: 41, step:8},
+    { id: 'batch_size', label: 'batch_size', type:'number', defaultValue:1}
+  ],
+  'FrameInterpolation':[
+    {id:'multiplier', label:'multiplier',type:'number',defaultValue:2},
+    { id: 'fps', label: 'fps', type: 'number', defaultValue: 16, step:1},
+  ]
+};
+// --- (核心修改 3) 存储当前参数值的 reactive 对象 ---
+const parameterValues = reactive<Record<string, any>>({});
+
+// (核心修改) 创建一个计算属性，根据传入的类型过滤模块列表
+const availableModules = computed(() => {
+  if (!props.initialWorkflowType) {
+    return allModules; // 如果没有类型，显示全部 (或只显示默认?)
+  }
+  return allModules.filter(module => module.type === props.initialWorkflowType);
+});
+
+// --- (核心修改 4) 计算当前应显示的参数列表 ---
+const currentParameters = computed<FormParameter[]>(() => {
+  return workflowParameters[moduleId.value as keyof typeof workflowParameters] || [];
+});
+
+// --- (核心修改 5) 监听 moduleId 变化，重置参数值为默认值 ---
+function resetParameterValues(moduleIdToLoad: string) {
+  // 清空旧值 (非常重要!)
+  Object.keys(parameterValues).forEach(key => delete parameterValues[key]);
+  // 设置新模块的默认值
+  const params = workflowParameters[moduleIdToLoad as keyof typeof workflowParameters] || [];
+  params.forEach(param => {
+    parameterValues[param.id] = param.defaultValue;
+  });
+  console.log("参数已重置为:", moduleIdToLoad, parameterValues);
+}
+
+// 监听从父组件传入的 initialModuleId
+watch(() => props.initialModuleId, (newModuleId) => {
+  if (newModuleId && newModuleId !== moduleId.value) {
+    moduleId.value = newModuleId;
+  } else if (!newModuleId && availableModules.value.length > 0) {
+    if (!moduleId.value) {
+      // (核心修复) 确保 availableModules[0] 存在
+      const firstModule = availableModules.value[0];
+      if (firstModule) {
+        moduleId.value = firstModule.id;
+      }
+    }
+  }
+}, { immediate: true });
+
+// 监听用户选择或上面 watch 改变的 moduleId
+watch(moduleId, (newModuleId, oldModuleId) => {
+  // 确保在模块 ID 确实改变时才重置
+  if (newModuleId && newModuleId !== oldModuleId) {
+      resetParameterValues(newModuleId);
+  }
+}, { immediate: true }); // immediate 保证首次加载时设置默认值
+
 
 // 对 <input type="file"> DOM 元素的引用
 const fileInputRef = ref<HTMLInputElement | null>(null)
@@ -262,20 +392,47 @@ function onFileChange(event: Event) {
  * 当点击 "开始生成" 按钮时触发
  */
 function onGenerateClick() {
-  // 1. 组装参数
-  const parameters: Record<string, any> = {
-    positive_prompt: prompt.value,
-    // 如果 seed.value 是 null 或 0，就生成一个随机数
-    seed: seed.value || Math.floor(Math.random() * 1000000000000000),
-    steps: steps.value,
-    cfg: cfg.value,
-    denoise: denoise.value,
+  // (核心修改 1)
+  // 获取用户在下拉框中选择的 虚拟 module ID
+  let virtualModuleId = moduleId.value;
+  // 这是我们将要发给后端的 真实 module ID
+  let finalModuleId = virtualModuleId; 
+
+  // 1. (核心) 直接复制当前的参数值
+  const currentParams = { ...parameterValues };
+
+  // 2. (核心修改 2) 在这里实现你的逻辑“开关”
+  if (virtualModuleId === 'ImageToImage') {
+    const loraChoice = currentParams.lora_selector; // 获取 'LoRA / Control Model' 的值
+
+    if (loraChoice === 'Canny') {
+      finalModuleId = 'ImageGenerateImage_Canny'; // 告诉后端运行 Canny 工作流
+    } else {
+      // 默认 (loraChoice === 'None' 或其他)
+      finalModuleId = 'ImageGenerateImage_Basic'; // 告诉后端运行 Basic 工作流
+    }
+    // (可选，但推荐) 从参数中移除这个仅供前端使用的 lora_selector
+    // 因为后端 (app.py) 并不认识 'lora_selector' 这个 key
+    delete currentParams.lora_selector;
   }
 
-  // 2. (核心) 将模块ID和参数 emit 出去，让 App.vue 去处理
-  emit('generate', moduleId.value, parameters)
+  // 3. (v53 逻辑) 处理后端需要的特定参数名
+  const finalParameters: Record<string, any> = {};
+  // a. 复制所有*剩余*的参数
+  for (const key in currentParams) {
+    finalParameters[key] = currentParams[key];
+  }
+  // b. 处理 'prompt' -> 'positive_prompt'
+  if (currentParams.prompt !== undefined) {
+    finalParameters.positive_prompt = currentParams.prompt;
+  }
+  // c. 处理 'seed'
+  if (finalParameters.seed === null || finalParameters.seed === undefined || finalParameters.seed === '') {
+    finalParameters.seed = Math.floor(Math.random() * 1000000000000000);
+  }
+  console.log("即将提交的真实 ModuleID:", finalModuleId, "和参数:", finalParameters);
 
-  // 3. (可选) 生成后清空 prompt
-  // prompt.value = ''
+  // 4. (核心) 将*真实*的模块ID (finalModuleId) 和处理后的参数 emit 出去
+  emit('generate', finalModuleId, finalParameters);
 }
 </script>
