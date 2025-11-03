@@ -44,8 +44,8 @@ interface DbNode {
   parent_id: string | string[] | null; // 父ID可以是 null, string, 或 string[]
   tree_id: number;
   module_id: string;
-  parameters: string | null; // JSON string
-  assets: string | null;     // JSON string
+  parameters: Record<string,any> | null; // JSON string
+  assets: Record<string,any> | null;     // JSON string
   status: string;
   created_at: string;
 }
@@ -76,6 +76,7 @@ export interface AppNode {
   // originalParents: string | string[] | null; // (可选) 保留原始父ID信息
   linkColor?:string;
   _collapsed?: boolean;
+  parameters: Record<string, any> | null;
 }
 
 // 拼接序列中片段的类型
@@ -140,40 +141,44 @@ export function useWorkflow() {
   }
 
   /** 解析 DB 传来的 assets 字段 (可能为 null 或 JSON 字符串) */
-  function parseAssetsField(assetsField: string | null): AssetDetails | null {
-    if (!assetsField) return null
-    try {
-      if (typeof assetsField === 'string') {
-        if (assetsField.trim() === '' || assetsField.trim() === '{}') return null
-        return JSON.parse(assetsField)
-      } else if (typeof assetsField === 'object') {
-        return assetsField // 已经是对象
-      }
-    } catch (err) {
-      console.warn('解析 assets 失败:', err, assetsField)
-      return null
-    }
-    return null
+  function parseAssetsField(assetsObject: AssetDetails | null): AssetDetails | null {
+    if (!assetsObject) return null
+    return assetsObject;
+    // try {
+    //   if (typeof assetsField === 'string') {
+    //     if (assetsField.trim() === '' || assetsField.trim() === '{}') return null
+    //     return JSON.parse(assetsField)
+    //   } else if (typeof assetsField === 'object') {
+    //     return assetsField // 已经是对象
+    //   }
+    // } catch (err) {
+    //   console.warn('解析 assets 失败:', err, assetsField)
+    //   return null
+    // }
+    // return null
   }
 
   /** 从解析后的 assets 对象中获取第一个媒体文件 */
-  function firstMediaFromAssets(assets: AssetDetails | null): { path: string; type: 'image' | 'video' } | null {     
-    if (!assets) {       
-      return null     
-    }      
-    const imgs = assets.images || []     
-    const vids = assets.videos || []      // (修改) 我们不只检查 .length，我们直接检查第一个元素的值
-    const firstImg = imgs[0]     
-    if (firstImg) { // 检查 firstImg 是不是 'undefined' 或 ''
-      return { path: firstImg, type: 'image' }     
-    }      // (修改) 同样地，我们直接检查第一个视频元素的值
-    const firstVid = vids[0]     
-    if (firstVid) { // 检查 firstVid 是不是 'undefined' 或 ''
-      return { path: firstVid, type: 'video' }     
-    }        
-    return null   
+  function firstMediaFromAssets(assets: AssetDetails | null): { path: string; type: 'image' | 'video' } | null {
+    if (!assets) return null;
+    // (v91 修复)
+    // 检查 .mp4，因为后端 可能把视频放进 images
+    const imgs = assets.images || [];
+    const vids = assets.videos || [];
+    // (v91) 优先检查视频
+    if (Array.isArray(vids) && vids.length > 0) {
+      if (vids[0]) return { path: vids[0], type: 'video' };
+    }
+    // (v91) 其次检查图片
+    if (Array.isArray(imgs) && imgs.length > 0) {
+      if (imgs[0]) {
+        // (v91 关键逻辑) 检查这个 "image" 是不是 .mp4
+        const isVideo = (typeof imgs[0] === 'string') && (imgs[0].includes('.mp4') || imgs[0].includes('subfolder=video'));
+        return { path: imgs[0], type: isVideo ? 'video' : 'image' };
+      }
+    }
+    return null;
   }
-
   
   /** 将相对路径转换为完整的 ComfyUI URL */
   function makeFullUrl(path: string | null): string | null {
@@ -245,7 +250,8 @@ export function useWorkflow() {
         status: n.status,
         media: media,
         linkColor: linkColor,
-        _collapsed: false
+        _collapsed: false,
+        parameters:n.parameters
       }
     })
 
