@@ -831,5 +831,5 @@ if __name__ == '__main__':
         database.add_node(tree_id, None, "Init", {"description": "项目根节点"})
         print(f"已创建默认项目，ID为: {tree_id}")
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5005, debug=True)
 

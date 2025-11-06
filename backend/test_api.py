@@ -7,7 +7,7 @@ from PIL import Image # 用于创建测试图片
 import urllib.request
 import random
 # --- 配置 ---
-BASE_URL = "http://223.193.6.178:5000" # !!! 修改为您的 Flask 服务器地址 !!!
+BASE_URL = "http://223.193.6.178:5005" # !!! 修改为您的 Flask 服务器地址 !!!
 TEST_TREE_ID = 1
 TEST_IMAGE_FILENAME = "cat.jfif"
 TEST_MASK_FILENAME = "test_mask.png"
