@@ -313,15 +313,15 @@ export function renderTree(
     });
 
     // Hover 事件 (显示按钮)
-    card.on('mouseenter', () => card.selectAll('.dots-container').style('opacity', '1'))
-       .on('mouseleave', () => card.selectAll('.dots-container').style('opacity', '0'));
+    card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
+       .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'));
 
     // --- 5. 卡片 Header (与标准卡片相同) ---
     const header = card.append('xhtml:div') //
       .style('display', 'flex')
       .style('justify-content', 'space-between')
       .style('align-items', 'center')
-      .style('padding', '4px')
+      .style('padding', '1px 4px')
       .style('border-bottom', '1px solid #e5e7eb')
       .style('flex-shrink', '0');
 
@@ -467,6 +467,26 @@ export function renderTree(
         .on('click', (ev) => { ev.stopPropagation(); emit('open-generation', d, info.defaultModuleId, info.type) }); //
     });
 
+    const footer = card.append('xhtml:div')
+      .style('display', 'flex').style('justify-content', 'flex-end')
+      .style('padding', '2px')
+      
+
+    footer.append('xhtml:button')
+      .attr('class', 'add-clip-btn')
+      .html('&#9658;') // ▶
+      .style('opacity', '0').style('transition', 'opacity 0.15s ease-in-out') // (默认隐藏，同)
+      .style('width', '10px').style('height', '10px')
+      .style('display', 'flex').style('align-items', 'center').style('justify-content', 'center')
+      .style('color', '#3b82f6').style('font-size', '1.125rem')
+      .style('border', 'none').style('background-color', 'transparent').style('padding', '0')
+      .style('cursor', 'pointer')
+      .on('mousedown', (ev) => ev.stopPropagation())
+      .on('click', (ev) => {
+          ev.stopPropagation();
+          // (关键) 发出 'audio' 类型
+          emit('add-clip', d, 'audio');
+        });
     // --- 9. 收缩/展开按钮 (与标准卡片相同) ---
     addCollapseButton(gEl, d, allNodesData, emit); //
 
@@ -542,7 +562,7 @@ export function renderTree(
       .style('display', 'flex')
       .style('justify-content', 'space-between')
       .style('align-items', 'center')
-      .style('padding', '4px')
+      .style('padding', '1px 4px')
       .style('border-bottom', '1px solid #e5e7eb')
       .style('flex-shrink', '0')
       .style('justify-content', isPureTextNode ? 'center' : 'space-between'); 

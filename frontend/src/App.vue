@@ -18,10 +18,12 @@
       />
       <StitchingPanel
         :clips="stitchingClips"
+        :audioClips="audioClips"
         :is-stitching="isStitching"
         :stitch-result-url="stitchResultUrl"
         @update:clips="handleClipsUpdate"
         @remove-clip="removeClipFromStitch"
+        @remove-audio-clip="removeClipFromAudio"
         @stitch="onStitchRequest"
       />
     </main>
@@ -67,6 +69,7 @@ const {
   allNodes,
   selectedParentIds,
   stitchingClips,
+  audioClips,
   isGenerating,
   isStitching,
   isPreviewOpen,
@@ -79,6 +82,7 @@ const {
   handleDeleteNode,
   addClipToStitch,
   removeClipFromStitch,
+  removeClipFromAudio,
   handleStitchRequest,
   openPreview,
   closePreview,

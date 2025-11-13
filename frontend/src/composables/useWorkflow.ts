@@ -101,6 +101,14 @@ export interface VideoClip {
   //endTime: number;
   //totalDuration: number;
 }
+export interface AudioClip {
+  nodeId: string;
+  mediaPath: string;
+  thumbnailUrl: string;
+  duration:number
+  type: 'audio';
+}
+
 
 // 使用 "可辨识联合类型" (Discriminated Union)
 export type StitchingClip = ImageClip | VideoClip;
@@ -131,6 +139,7 @@ export function useWorkflow() {
 
   // 视频拼接
   const stitchingClips = reactive<StitchingClip[]>([])
+  const audioClips = reactive<AudioClip[]>([])
 
   // 预览弹窗
   const isPreviewOpen = ref(false)
@@ -435,15 +444,25 @@ function toggleNodeCollapse(nodeId: string) {
   // --- 7. 导出的拼接相关函数 (Actions) ---
 
   /** (Action) 添加一个片段到拼接序列 (由 WorkflowTree.vue 调用) */
-  async function addClipToStitch(node: AppNode, type: 'image' | 'video') {
+  async function addClipToStitch(node: AppNode, type: 'image' | 'video' | 'audio') {
     if (!node.media || !node.media.rawPath) return
-    if (stitchingClips.some(clip => clip.nodeId === node.id)) {
-      alert('该片段已在拼接序列中。')
-      return
-    }
-
+    // if (stitchingClips.some(clip => clip.nodeId === node.id)) {
+    //   alert('该片段已在拼接序列中。')
+    //   return
+    // }
+    console.log(`[addClipToStitch]接收到类型：${type}`)
     try {
-      if (type === 'video') {
+      if (type === 'audio'){
+        const audioDuration = await getVideoDuration(node.media.url)
+        audioClips.push({
+          nodeId: node.id,
+          mediaPath: node.media.rawPath,
+          thumbnailUrl: node.media.url,
+          type: 'audio',
+          duration: audioDuration,
+        })
+        console.log(`[addClipToStitch]成功推送到'audioClips', A1轨道现在有:`,audioClips.length,"个剪辑")
+      }else if (type === 'video') {
         const videoDuration = await getVideoDuration(node.media.url)
         stitchingClips.push({
           nodeId: node.id,
@@ -451,10 +470,8 @@ function toggleNodeCollapse(nodeId: string) {
           thumbnailUrl: node.media.url,
           type: 'video',
           duration: videoDuration,
-          // startTime: 0,
-          // endTime: videoDuration,
-          // totalDuration: videoDuration
         })
+        console.log(`[addClipToStitch]成功推送到'stitchingClips'`)
       } else {
         stitchingClips.push({
           nodeId: node.id,
@@ -463,6 +480,7 @@ function toggleNodeCollapse(nodeId: string) {
           type: 'image',
           duration: 3.0 // 默认 3 秒
         })
+        console.log(`[addClipToStitch]成功推送到'stitchingClips'`)
       }
     } catch (error: any) {
       console.error("添加片段时出错:", error)
@@ -474,6 +492,9 @@ function toggleNodeCollapse(nodeId: string) {
   function removeClipFromStitch(index: number) {
     stitchingClips.splice(index, 1)
   }
+  function removeClipFromAudio(index: number){
+    audioClips.splice(index, 1)
+  }
 
   /** (Action) 请求后端拼接视频 (由 StitchingPanel.vue 调用) */
   async function handleStitchRequest() {
@@ -483,6 +504,11 @@ function toggleNodeCollapse(nodeId: string) {
     }
     isStitching.value = true
     showStatus('正在请求后端拼接...')
+    // --- 【调试】---
+    console.log("--- [Stitch Request] 准备发送 ---");
+    console.log("V1 (video) 轨道内容:", JSON.stringify(stitchingClips));
+    console.log("A1 (audio) 轨道内容:", JSON.stringify(audioClips));
+    // --- 【调试】---
     // StitchingPanel.vue 应该自己显示结果, 这里只更新 status
     // 准备要发送的数据
     const clipsData = stitchingClips.map(clip => {
@@ -492,12 +518,25 @@ function toggleNodeCollapse(nodeId: string) {
         return { path: clip.mediaPath, type: clip.type, duration: clip.duration }
       }
     })
+    const audioClipsData = audioClips.map(clip => {
+      return { path: clip.mediaPath, type: clip.type, duration: clip.duration }
+    })
+    // --- 【调试】---
+    const payload = { 
+        clips: clipsData, 
+        audio_clips: audioClipsData 
+    }
+    console.log("发送到后端的 Payload:", payload);
+    // --- 【调试】---
 
     try {
       const response = await fetch(STITCH_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clips: clipsData })
+         body: JSON.stringify({ 
+          clips: clipsData, 
+          audio_clips: audioClipsData // <-- 新增的键
+        })
       })
 
       if (!response.ok) { const errText = await response.text(); throw new Error(`拼接失败: ${errText}`) }
@@ -523,7 +562,7 @@ function toggleNodeCollapse(nodeId: string) {
   // --- 8. 导出的弹窗函数 (Actions) ---
 
   /** (Action) 打开预览弹窗 (由 WorkflowTree.vue 调用) */
-  function openPreview(mediaUrl: string, type: 'image' | 'video') {
+  function openPreview(mediaUrl: string, type: 'image' | 'video'|'audio') {
     previewMedia.url = mediaUrl
     previewMedia.type = type
     isPreviewOpen.value = true
@@ -547,6 +586,7 @@ function toggleNodeCollapse(nodeId: string) {
     allNodes,
     selectedParentIds,
     stitchingClips,
+    audioClips,
     isPreviewOpen,
     previewMedia,
 
@@ -557,6 +597,7 @@ function toggleNodeCollapse(nodeId: string) {
     handleDeleteNode,
     addClipToStitch,
     removeClipFromStitch,
+    removeClipFromAudio,
     handleStitchRequest,
     openPreview,
     closePreview,

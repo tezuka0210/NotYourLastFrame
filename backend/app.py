@@ -12,7 +12,7 @@ from flask import Flask, request, jsonify, send_from_directory, render_template,
 from flask_cors import CORS
 from dotenv import load_dotenv
 from typing import Optional
-from moviepy import VideoFileClip, concatenate_videoclips,ImageClip
+from moviepy import VideoFileClip, concatenate_videoclips,ImageClip,AudioFileClip,concatenate_audioclips
 # 导入之前设计的数据库操作模块
 import database
 import random
@@ -24,7 +24,7 @@ app = Flask(__name__, template_folder='templates')
 CORS(app)
 
 # --- 模式开关 ----
-APP_MODE = os.getenv('APP_MODE', 'local') 
+APP_MODE = os.getenv('APP_MODE', 'server') 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 print(f"--- 应用程序正在以 {APP_MODE.upper()} 模式运行 ---")
 
@@ -472,6 +472,17 @@ def create_node():
     parent_ids = data.get('parent_ids',[]) # 现在我们简化为单个父节点
     module_id_from_frontend = data.get('module_id')
     parameters = data.get('parameters', {})
+    # --- 【新增】开始：处理随机 Seed ---
+    # 检查 'seed' 是否存在并且其值是否为 None (来自前端的 null)
+    if 'seed' in parameters and parameters['seed'] is None:
+        # 如果是 None，就生成一个 Python 随机整数
+        parameters['seed'] = random.randint(0, 999999999999999)
+        print(f"    - 检测到空 Seed，已生成随机 Seed: {parameters['seed']}")
+    if 'audio_seed' in parameters and parameters['audio_seed'] is None:
+        # 如果是 None，就生成一个 Python 随机整数
+        parameters['audio_seed'] = random.randint(0, 4294967295)
+        print(f"    - 检测到空 Seed，已生成随机 Seed: {parameters['audio_seed']}")
+    # --- 【新增】结束 ---
 
     # workflow = load_workflow(module_id)
     # if workflow is None:
@@ -695,8 +706,10 @@ def create_node():
         if voice_node_id:
             if 'text' in parameters:
                 workflow[voice_node_id]["inputs"]["text"] = parameters['text']
-            if 'speed' in parameters:
-                workflow[voice_node_id]["inputs"]["voice_speed_factor"] = ['speed']
+            if 'voice_speed_factor' in parameters:
+                workflow[voice_node_id]["inputs"]["voice_speed_factor"] = parameters['voice_speed_factor']
+            if 'audio_seed' in parameters:
+                workflow[voice_node_id]["inputs"]["seed"] = parameters['audio_seed']
 
     
         # --- 调用ComfyUI并等待结果 ---
@@ -732,122 +745,210 @@ def create_node():
 
 # --- 【核心修改】视频拼接 API 接口 (使用 moviepy) ---
 @app.route('/api/stitch', methods=['POST'])
+@app.route('/api/stitch', methods=['POST'])
 def stitch_videos():
     data = request.get_json()
-    clips_data = data.get('clips') # <-- 接收包含类型的数据
 
-    if not clips_data or len(clips_data) < 1: # 至少需要一个片段
-        return jsonify({"error": "需要至少一个片段路径"}), 400
+    # --- 【调试】---
+    print("\n" + "="*50)
+    print("--- [Stitch Request] 后端已收到 ---")
+    print(json.dumps(data, indent=2))
+    print("="*50 + "\n")
+    # --- 【调试】---
 
-    moviepy_clips = [] # 用于存放 VideoFileClip 或 ImageClip 对象
-    default_image_duration = 3 # 图片作为视频片段的默认时长（秒）
-    target_fps = 16 # 目标输出帧率 (可以根据需要调整)
+    clips_data = data.get('clips') # <-- 视频/图片轨
+    audio_clips_data = data.get('audio_clips', []) # <-- 【新增】获取音轨
+
+     # --- 【调试】---
+    if not audio_clips_data:
+        print("!!! [Stitch Request] 警告: 'audio_clips' 键为空或不存在。!!!")
+    # --- 【调试】---
+
+    if not clips_data or len(clips_data) < 1:
+        return jsonify({"error": "需要至少一个视频/图片片段"}), 400
+
+    moviepy_clips = []
+    moviepy_audio_clips = [] # <-- 【新增】
+    default_image_duration = 3
+    target_fps = 16 
+
+    final_video_clip = None # <-- 【新增】
+    final_audio_clip = None # <-- 【新增】
 
     try:
-        # --- 1. 将相对路径转换为绝对路径并创建 MoviePy Clip 对象 ---
+        # --- 1. 处理视频/图片轨 (与旧逻辑基本相同) ---
+        print("--- 正在处理视频轨 ---")
         for clip_info in clips_data:
             relative_path = clip_info.get('path')
             clip_type = clip_info.get('type') # 'image' 或 'video'
 
             if not relative_path or not clip_type:
-                raise ValueError(f"片段信息不完整: {clip_info}")
+                raise ValueError(f"视频轨片段信息不完整: {clip_info}")
 
-            # 解析相对路径
+            # (解析路径)
             parsed_url = urllib.parse.urlparse(relative_path)
             query_params = urllib.parse.parse_qs(parsed_url.query)
             filename = query_params.get('filename', [None])[0]
             subfolder = query_params.get('subfolder', [''])[0]
             if not filename:
-                raise ValueError(f"无法从路径解析文件名: {relative_path}")
+                raise ValueError(f"无法从视频轨路径解析文件名: {relative_path}")
 
-            # 构建绝对路径
-            # 【重要】需要区分图片和视频可能在不同的目录下
-            if clip_type == 'video':
-                # 假设视频都在 output/video 子目录下
-                full_path = os.path.join(COMFYUI_OUTPUT_PATH, 'video', filename)
-                
-            else: # 图片
-                 # 假设图片直接在 output 目录下
-                full_path = os.path.join(COMFYUI_OUTPUT_PATH, filename)
-                
-
+            # (构建绝对路径)
+            full_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
             if not os.path.exists(full_path):
-                # 尝试去掉 subfolder 查找，兼容旧数据或不同工作流
                 full_path_alt = os.path.join(COMFYUI_OUTPUT_PATH, filename)
                 if not os.path.exists(full_path_alt):
-                   raise FileNotFoundError(f"媒体文件未找到: {full_path} 或 {full_path_alt}")
+                   # (尝试 video 文件夹)
+                   full_path_video = os.path.join(COMFYUI_OUTPUT_PATH, 'video', filename)
+                   if not os.path.exists(full_path_video):
+                       raise FileNotFoundError(f"视频/图片文件未找到: {filename}")
+                   else:
+                       full_path = full_path_video
                 else:
-                    full_path = full_path_alt # 使用备用路径
+                    full_path = full_path_alt
 
-
-            # 创建 MoviePy Clip 对象
+            # (创建 MoviePy Clip 对象 - 不变)
             if clip_type == 'video':
                 print(f"加载视频: {full_path}")
                 video_clip = VideoFileClip(full_path)
-                # --- 【新增】读取前端传来的裁剪参数 ---
-                start_time = clip_info.get('startTime') # 可能是 None
-                end_time = clip_info.get('endTime')   # 可能是 None
-                # 如果前端提供了合法的起止时间，则使用它们
-                # (注意：moviepy 的 subclip 允许 None 作为参数，表示“到开头”或“到结尾”)
-                # 我们需要做更严格的检查，确保 None 被转换为 0 和 clip.duration
-                final_start = 0
-                if start_time is not None:
+                # (裁剪逻辑... 不变)
+                # --- (v90 修复) 确保 duration, startTime, endTime 存在 ---
+                total_duration = video_clip.duration
+                start_time = clip_info.get('startTime', 0)
+                end_time = clip_info.get('endTime', total_duration)
+
+                # (v90) 确保类型为 float 且不超出范围
+                try:
                     final_start = float(start_time)
-
-                final_end = video_clip.duration
-                if end_time is not None and float(end_time) <= video_clip.duration:
                     final_end = float(end_time)
-                # 防止无效时间
-                if final_start >= final_end:
+                    if final_start < 0: final_start = 0
+                    if final_end > total_duration: final_end = total_duration
+                    if final_start >= final_end:
+                        final_start = 0
+                        final_end = total_duration
+                except Exception as e:
+                    print(f"    - 警告: 无法解析时间 {start_time}-{end_time}。使用完整剪辑。 {e}")
                     final_start = 0
-                    final_end = video_clip.duration
+                    final_end = total_duration
 
-                print(f"  裁剪视频从 {final_start}s 到 {final_end}s")
-                # 使用 subclip 创建裁剪后的片段
+                print(f"    - 裁剪视频从 {final_start}s 到 {final_end}s")
                 trimmed_clip = video_clip.subclipped(final_start, final_end)
-                # --- 【修改】将裁剪后的片段(trimmed_clip)加入列表 ---
                 moviepy_clips.append(trimmed_clip)
-                # --- 【新增】立即关闭原始视频文件句柄，释放资源 ---
-                #video_clip.close()
             else: # 图片
-                # --- 【修改】读取前端传来的时长参数 ---                 
-                duration = clip_info.get('duration') # 可能是 None
-                if duration is None or float(duration) <= 0:                     
-                    final_duration = default_image_duration                 
-                else:                     
-                    final_duration = float(duration) # 确保是数字                                  
-                print(f"加载图片并创建为 {final_duration} 秒片段: {full_path}")                                 
-                image_clip = ImageClip(full_path)                 
-                # --- 【修改】使用从前端获取的时长 ---                 
-                image_clip.duration = final_duration                  
-                image_clip.fps = target_fps                 
+                duration = clip_info.get('duration', default_image_duration)
+                if duration is None or float(duration) <= 0:
+                    duration = default_image_duration
+
+                print(f"加载图片并创建为 {duration} 秒片段: {full_path}")
+                image_clip = ImageClip(full_path)
+                image_clip.duration = float(duration)
+                image_clip.fps = target_fps
                 moviepy_clips.append(image_clip)
 
         if not moviepy_clips:
-             raise ValueError("未能成功加载任何媒体片段")
+             raise ValueError("未能成功加载任何视频/图片片段")
 
-        # --- 2. 使用 moviepy 拼接视频 ---
-        print("使用 moviepy 拼接片段...")
-        final_clip = concatenate_videoclips(moviepy_clips, method="compose") # compose 更稳定
+        print("使用 moviepy 拼接视频轨...")
+        final_video_clip = concatenate_videoclips(moviepy_clips, method="compose")
 
-        # --- 3. 写入输出文件 ---
+        # --- 【关键修复】开始：在添加新音轨之前，先移除所有旧音轨 ---
+        print("... 视频轨拼接完成。正在移除所有原始音轨...")
+        final_video_clip.audio = None
+        # --- 【关键修复】结束 ---
+
+        # --- 【新增】开始：处理音轨 ---
+        if audio_clips_data:
+            print("--- 正在处理音轨 ---")
+            for clip_info in audio_clips_data:
+                relative_path = clip_info.get('path')
+                if not relative_path:
+                    raise ValueError(f"音轨片段信息不完整: {clip_info}")
+
+                # (解析路径)
+                parsed_url = urllib.parse.urlparse(relative_path)
+                query_params = urllib.parse.parse_qs(parsed_url.query)
+                filename = query_params.get('filename', [None])[0]
+                subfolder = query_params.get('subfolder', [''])[0] # (应该是 'audio')
+                if not filename:
+                    raise ValueError(f"无法从音轨路径解析文件名: {relative_path}")
+
+                # (构建绝对路径 - 优先检查 subfolder)
+                full_path = os.path.join(COMFYUI_OUTPUT_PATH, subfolder, filename)
+                if not os.path.exists(full_path):
+                    # (备用：强制尝试 'audio' 文件夹)
+                    full_path_audio = os.path.join(COMFYUI_OUTPUT_PATH, 'audio', filename)
+                    if not os.path.exists(full_path_audio):
+                        # (备用：尝试根目录)
+                        full_path_alt = os.path.join(COMFYUI_OUTPUT_PATH, filename)
+                        if not os.path.exists(full_path_alt):
+                            raise FileNotFoundError(f"音频文件未找到: {filename} (尝试路径: {full_path}, {full_path_audio}, {full_path_alt})")
+                        else:
+                            full_path = full_path_alt
+                    else:
+                        full_path = full_path_audio
+
+                print(f"加载音频: {full_path}")
+                audio_clip = AudioFileClip(full_path)
+
+                # (v90 修复) 检查并应用音频剪辑的 duration
+                duration = clip_info.get('duration', audio_clip.duration)
+                try:
+                    final_duration = float(duration)
+                    if final_duration > audio_clip.duration:
+                        final_duration = audio_clip.duration
+                except Exception:
+                    final_duration = audio_clip.duration
+
+                print(f"    - 裁剪音频为 {final_duration}s")
+                moviepy_audio_clips.append(audio_clip.subclipped(0, final_duration))
+
+            if moviepy_audio_clips:
+                print("拼接音轨...")
+                final_audio_clip = concatenate_audioclips(moviepy_audio_clips)
+
+                # (关键) 将音频设置到视频上
+                print("将音轨合成到视频轨...")
+                # 确保音频不超过视频时长
+                if final_audio_clip.duration > final_video_clip.duration:
+                    print(f"    - 警告: 音轨 ( {final_audio_clip.duration}s ) 比视频轨 ( {final_video_clip.duration}s ) 长，将进行裁剪。")
+                    final_audio_clip = final_audio_clip.subclipped(0, final_video_clip.duration)
+
+                # 将视频的(已移除的)原声替换为我们的新音轨
+                final_video_clip.audio = final_audio_clip
+
+            else:
+                print("音轨数据存在，但未能加载任何音频剪辑。视频将无声。")
+
+        else:
+            print("未提供音轨数据 (A1 为空)。视频将无声。")
+        # --- 【新增】结束 ---
+
+        # --- 3. 写入输出文件 (基本不变) ---
         output_filename = f"stitched_{uuid.uuid4()}.mp4"
         output_path_absolute = os.path.join(STITCHED_OUTPUT_FOLDER, output_filename)
-        print(f"写入拼接后的视频到: {output_path_absolute}")
-        # 确保输出有统一的帧率和兼容的编码
-        final_clip.write_videofile(
+        print(f"写入最终合成的视频到: {output_path_absolute}")
+
+        final_video_clip.write_videofile(
             output_path_absolute,
-            codec="libx264",    # H.264 编码，兼容性好
-            audio_codec="aac",  # AAC 音频编码
-            fps=target_fps,     # 指定输出帧率
-            threads=4,          # 使用多线程加速
-            preset='medium'     # 速度与质量平衡
+            codec="libx264",
+            audio_codec="aac",  # <-- 现在 audio_codec 非常重要
+            fps=target_fps,
+            threads=4,
+            preset='medium'
         )
 
         # --- 4. 关闭所有打开的文件句柄 ---
         for clip in moviepy_clips:
             clip.close()
-        final_clip.close()
+        if final_video_clip:
+            final_video_clip.close()
+
+        # 【新增】关闭音轨句柄
+        for clip in moviepy_audio_clips:
+            clip.close()
+        if final_audio_clip:
+            final_audio_clip.close()
+        # 【新增】结束
 
         # --- 5. 返回结果 URL ---
         output_url = f"/stitched/{output_filename}"
@@ -855,14 +956,25 @@ def stitch_videos():
         return jsonify({"output_url": output_url}), 200
 
     except FileNotFoundError as e:
+        print(f"文件未找到错误: {e}")
         return jsonify({"error": str(e)}), 404
     except ValueError as e:
+         print(f"值错误: {e}")
          return jsonify({"error": str(e)}), 400
     except Exception as e:
         print(f"Moviepy 处理过程中发生错误: {type(e).__name__} - {e}")
-        # 清理 clip 对象
+        # 清理 clip 对象 (v90 修复缩进)
         for clip in moviepy_clips:
             try: clip.close()
+            except: pass
+        for clip in moviepy_audio_clips:
+            try: clip.close()
+            except: pass
+        if final_video_clip:
+            try: final_video_clip.close()
+            except: pass
+        if final_audio_clip:
+            try: final_audio_clip.close()
             except: pass
         return jsonify({"error": f"视频拼接失败: {e}"}), 500
 

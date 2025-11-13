@@ -3,22 +3,37 @@ import VideoEditingTimeline from 'video-editing-timeline'
 
 /* --------------  主逻辑：返回给组件用  -------------- */
 export function useStitching(props, emit) {
-  /* ----- 响应式状态 ----- */
-  const pixelsPerSecond = ref(40)          // 缩放级别
-  const draggedClipIndex   = ref(null)     // 正被拖的索引
-  const draggedOverIndex   = ref(null)     // 目标索引
-  const isDraggingOverContainer = ref(false)
 
-  /* ----- 计算属性 ----- */
-  const clipWidths = computed(() =>
+  /* ----- 1. 响应式状态 (UI) ----- */
+  const pixelsPerSecond = ref(40) // 缩放级别 (两个轨道共享)
+
+  // 【修改】拖拽状态现在需要知道轨道信息
+  // 将存储: { track: 'video' | 'audio', index: number }
+  const draggedClip = ref(null)
+  // 将存储: { track: 'video' | 'audio', index: number }
+  const draggedOver = ref(null)
+  // 将存储: 'video' | 'audio'
+  const isDraggingOverContainer = ref(null)
+
+  /* ----- 2. 计算属性 (UI) ----- */
+
+  // 【修改】重命名为 videoClipWidths，并使用 props.clips
+  const videoClipWidths = computed(() =>
     props.clips.map(c =>
       `${Math.max(50, c.duration * pixelsPerSecond.value)}px`
     )
   )
 
-  /* ----- 时间尺 ----- */
+  // 【新增】为音轨计算宽度，使用 props.audioClips
+  const audioClipWidths = computed(() =>
+    props.audioClips.map(c =>
+      `${Math.max(30, c.duration * pixelsPerSecond.value)}px`
+    )
+  )
+
+  /* ----- 3. 时间尺 (不变) ----- */
   function drawTimeline(pxPerSec) {
-    nextTick(() => {              // 保证 canvas 已渲染
+    nextTick(() => {
       const canvas = document.getElementById('timeline-ruler')
       if (!canvas) return
       const Constructor = VideoEditingTimeline.default || VideoEditingTimeline
@@ -38,82 +53,108 @@ export function useStitching(props, emit) {
     })
   }
 
-  /* ----- 缩放 ----- */
+  /* ----- 4. 缩放 (不变) ----- */
   function handleZoom(e) {
     const factor = e.deltaY > 0 ? 0.9 : 1.1
     pixelsPerSecond.value =
       Math.max(10, Math.min(800, pixelsPerSecond.value * factor))
   }
 
-  /* ----- 拖拽核心 ----- */
-  function handleDragStart(index, e) {
-    console.log(`%c[DRAG START]`, 'color: blue; font-weight: bold;', `拖拽开始，索引: ${index}`);
-    draggedClipIndex.value = index
+  /* ----- 5. 拖拽核心 (已重构) ----- */
+
+  /** 拖拽开始 (需要知道来自哪个轨道) */
+  function handleDragStart(trackType, index, e) {
+    draggedClip.value = { track: trackType, index: index }
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData('text/plain', String(index))
   }
-  function handleDragOverItem(index) {
-    if (draggedOverIndex.value !== index) {
-    console.log(`%c[DRAG OVER ITEM]`, 'color: #999;', `悬停在 视频块 ${index} 上方`);
+
+  /** 悬停在另一个剪辑上 (需要知道目标轨道) */
+  function handleDragOverItem(trackType, index) {
+    draggedOver.value = { track: trackType, index: index }
+    isDraggingOverContainer.value = null
   }
-    draggedOverIndex.value = index
-    isDraggingOverContainer.value = false
-  }
+
   function handleDragLeaveItem() {
-    draggedOverIndex.value = null
+    draggedOver.value = null
   }
-  function handleDropOnItem(targetIndex) {
-    // console.log(`%c[DROP ON ITEM]`, 'color: green; font-weight: bold;', `在 视频块 ${targetIndex} 上松手`);
-    const src = draggedClipIndex.value
-    // console.log(`  - 来源索引 (src): ${src}`);
-    // console.log(`  - 目标索引 (targetIndex): ${targetIndex}`);
-if (src === null || src === targetIndex) {
-    console.warn('  - 拖拽无效 (来源=null 或 来源=目标)，操作取消。');
-    return
-}
 
-    const list = [...props.clips]
-    const [moved] = list.splice(src, 1)
+  /** 在另一个剪辑上松手 (需要知道目标轨道) */
+  function handleDropOnItem(targetTrack, targetIndex) {
+    const src = draggedClip.value
+    // 检查：必须有拖拽源，且源轨道必须与目标轨道相同
+    if (!src || src.track !== targetTrack) {
+      console.warn('跨轨道拖放无效。');
+      return
+    }
+    if (src.index === targetIndex) return // 拖到自己身上
+
+    // 根据轨道类型选择正确的数组和 emit 事件
+    const list = (src.track === 'video') ? [...props.clips] : [...props.audioClips]
+    const emitEvent = (src.track === 'video') ? 'update:clips' : 'update:audioClips'
+
+    // 执行数组操作
+    const [moved] = list.splice(src.index, 1)
     if (moved) list.splice(targetIndex, 0, moved)
-    // console.log('  - [准备 Emit] 新的列表:', list.map(c => c.nodeId)); // 只打印 ID 方便查看
-    emit('update:clips', list)
 
-    draggedOverIndex.value = null
+    // 【修改】发出正确的事件
+    emit(emitEvent, list)
+
+    draggedOver.value = null
   }
+
+  /** 拖拽结束 (重置一切) */
   function handleDragEnd() {
-    // console.log(`%c[DRAG END]`, 'color: red; font-weight: bold;', '拖拽结束');
-    draggedClipIndex.value = null; // (修复) 确保这里用 .value
-    draggedOverIndex.value = null; // (修复) 确保这里用 .value
-    isDraggingOverContainer.value = false
+    draggedClip.value = null;
+    draggedOver.value = null;
+    isDraggingOverContainer.value = null
   }
 
-  /* ----- 拖进空白处 ----- */
-  function handleDragOverContainer() {
-    if (draggedOverIndex.value === null) isDraggingOverContainer.value = true
+  /* ----- 6. 拖进空白处 (已重构) ----- */
+
+  /** 悬停在空白容器上 (需要知道目标轨道) */
+  function handleDragOverContainer(trackType) {
+    if (draggedOver.value === null) {
+      isDraggingOverContainer.value = trackType
+    }
   }
+
   function handleDragLeaveContainer() {
-    isDraggingOverContainer.value = false
+    isDraggingOverContainer.value = null
   }
-  function handleDropContainer() {
-    // console.log(`%c[DROP ON CONTAINER]`, 'color: green; font-weight: bold;', '在 空白容器 上松手');
-    const src = draggedClipIndex.value
-    if (src === null || !isDraggingOverContainer.value) {
-        console.warn('  - 拖拽无效 (来源=null 或 非容器拖拽)，操作取消。');
+
+  /** 在空白容器上松手 (需要知道目标轨道) */
+  function handleDropContainer(targetTrack) {
+    const src = draggedClip.value
+    if (!src || src.track !== targetTrack || isDraggingOverContainer.value !== targetTrack) {
+        console.warn('容器拖放无效。');
         return
     }
-    const list = [...props.clips]
-    const [moved] = list.splice(src, 1)
+
+    const list = (src.track === 'video') ? [...props.clips] : [...props.audioClips]
+    const emitEvent = (src.track === 'video') ? 'update:clips' : 'update:audioClips'
+
+    // 执行数组操作 (移动到末尾)
+    const [moved] = list.splice(src.index, 1)
     if (moved) list.push(moved)
-    // console.log('  - [准备 Emit] 新的列表:', list.map(c => c.nodeId)); // 只打印 ID 方便查看
-    emit('update:clips', list)
+
+    // 【修改】发出正确的事件
+    emit(emitEvent, list)
   }
 
+  /* ----- 7. 导出 ----- */
   return {
     pixelsPerSecond,
-    clipWidths,
-    draggedClipIndex,
-    draggedOverIndex,
+    videoClipWidths, // <-- 重命名
+    audioClipWidths, // <-- 新增
+
+    // 拖拽状态 (UI)
+    draggedClip,     // <-- 重命名
+    draggedOver,     // <-- 重命名
     isDraggingOverContainer,
+
+    // 函数
+    drawTimeline,
     handleZoom,
     handleDragStart,
     handleDragOverItem,
@@ -123,6 +164,5 @@ if (src === null || src === targetIndex) {
     handleDragOverContainer,
     handleDragLeaveContainer,
     handleDropContainer,
-    drawTimeline
   }
 }

@@ -26,6 +26,7 @@ const workflowParameters = {
   ],
   TextToAudio: [
     { id: 'text', label: 'Audio Prompt', type: 'textarea', defaultValue: '', placeholder: 'Text to be converted to audio...' },
+    { id: 'audio_seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'voice_speed_factor', label: 'Speed', type: 'number', defaultValue: 1.0, step:0.01, min:0.8, max:1.2  }
   ],
   ImageCanny: [
