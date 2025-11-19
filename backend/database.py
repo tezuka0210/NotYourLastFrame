@@ -6,8 +6,8 @@ from typing import Optional
 
 # --- 配置 ---
 # 数据库文件的名称，它将与 app.py 存储在同一个 backend/ 目录下
+#DATABASE_FILE = 'video_tree_Camel_figurines.db'
 DATABASE_FILE = 'video_tree.db'
-
 # --- 核心函数 ---
 
 def get_db_connection():
