@@ -22,7 +22,7 @@
         <div class="center-top">
           <WorkflowTree
             class="tree-wrapper"
-            :nodes="allNodes"
+            :nodes="viewNodes"
             v-model:selectedIds="selectedParentIds"
             @delete-node="handleDeleteNode"
             @add-clip="addClipToStitch"
@@ -75,13 +75,15 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, ref, watch, computed } from 'vue'
 
 import {
   useWorkflow,
   type AppNode,
   type StitchingClip
 } from '@/composables/useWorkflow'
+
+import { buildWorkflowView } from '@/lib/workflowLayout'
 
 import WorkflowTree from './components/WorkflowTree.vue'
 import StitchingPanel from './components/StitchingPanel.vue'
@@ -114,6 +116,9 @@ const {
   closePreview,
   toggleNodeCollapse,
 } = useWorkflow()
+
+// ⭐ 把 AppNode[] → ViewNode[]（带 cardType/title/isInit 的视图节点）
+const viewNodes = computed(() => buildWorkflowView(allNodes.value))
 
 function handleClipsUpdate(newList: StitchingClip[]) {
   stitchingClips.splice(0, stitchingClips.length, ...newList)
