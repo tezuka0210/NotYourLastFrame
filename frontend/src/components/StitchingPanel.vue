@@ -31,7 +31,10 @@
             v-for="(clip, index) in clips"
             :key="`${clip.nodeId}-${pixelsPerSecond}`"
             class="clip-item"
-            :class="{ dragging: draggedClip?.track === 'video' && draggedClip?.index === index }"
+            :class="[
+              clip.type === 'image' ? 'clip-item-image' : 'clip-item-video',
+              { dragging: draggedClip?.track === 'video' && draggedClip?.index === index }
+            ]"
             :style="{ width: videoClipWidths[index] }"
             draggable="true"
             @dragstart="handleDragStart('video', index, $event)"
@@ -62,9 +65,6 @@
             <!-- 底部信息条：icon + name + duration -->
             <div class="clip-meta">
               <div class="clip-meta-left">
-                <!-- 图片用 IMG，视频用 VID -->
-                <span class="clip-icon" v-if="clip.type === 'image'">IMG</span>
-                <span class="clip-icon" v-else>VID</span>
                 <span class="clip-name">{{ getClipName(clip) }}</span>
               </div>
               <span class="clip-duration">{{ formatClipDuration(clip.duration) }}</span>
@@ -93,7 +93,7 @@
       <!-- Audio track -->
       <div
         id="audio-stitching-panel"
-        class="bg-blue-100 p-4 rounded min-h-[40px]"
+        class="p-4 rounded min-h-[40px]"
         :class="{ 'drag-over': isDraggingOverContainer === 'audio' }"
         @dragover.prevent="handleDragOverContainer('audio')"
         @dragleave="handleDragLeaveContainer"
@@ -115,11 +115,11 @@
           >
             <div class="audio-thumb">
               <span class="audio-clip-name">
-                <span class="audio-icon">AUD</span>
                 {{ clip.nodeId.substring(0, 8) }}...
               </span>
               <span class="audio-clip-duration">{{ clip.duration.toFixed(1) }}s</span>
             </div>
+
 
             <span class="remove-btn" @click.stop="removeAudio(index)">×</span>
 

@@ -67,39 +67,3 @@ onUnmounted(() => {
 })
 </script>
 
-<style scoped>
-/* Small circular close button, matching the "×" style in stitching view */
-.modal-close-btn {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  width: 22px;
-  height: 22px;
-  border-radius: 999px;
-  border: 1px solid #e5e7eb;       /* gray-300 */
-  background-color: #ffffff;
-  color: #6b7280;                   /* gray-500 */
-  font-size: 14px;
-  line-height: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    background-color 0.15s ease-in-out,
-    color 0.15s ease-in-out,
-    border-color 0.15s ease-in-out,
-    transform 0.1s ease-in-out;
-}
-
-.modal-close-btn:hover {
-  background-color: #fee2e2;        /* red-100 */
-  border-color: #fecaca;            /* red-200 */
-  color: #dc2626;                   /* red-600 */
-  transform: scale(1.05);
-}
-
-.modal-close-btn:active {
-  transform: scale(0.95);
-}
-</style>

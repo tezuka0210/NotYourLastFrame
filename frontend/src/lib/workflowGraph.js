@@ -1,9 +1,63 @@
-// src/lib/lib/workflowGraph.js
+// src/lib/workflowGraph.js
 import * as d3 from 'd3'
 import * as dagre from 'dagre'
 import WaveSurfer from 'wavesurfer.js'
 
-const defaultLinkColor = '#9ca3af'
+// --- link color: light gray for all edges ---
+const defaultLinkColor = '#D1D5DB' // gray-300
+
+// --- node category palette (paper-friendly, from CSS variables) ---
+const NODE_COLORS = {
+  auxBorder:  'var(--media-aux-border)',
+
+  image:      'var(--media-image)',
+  video:      'var(--media-video)',
+  audio:      'var(--media-audio)',
+
+  imageSoft:  'var(--media-image-soft)',
+  videoSoft:  'var(--media-video-soft)',
+  audioSoft:  'var(--media-audio-soft)',
+}
+
+
+// selection shadow color is same as category color, but used in box-shadow
+function getNodeCategory(node) {
+  const hasMedia = !!(node.media && node.media.rawPath)
+  const rawPath = hasMedia ? node.media.rawPath : ''
+  const mediaType = node.media && node.media.type
+
+  const isAudioMedia =
+    typeof rawPath === 'string' &&
+    (rawPath.includes('.mp3') || rawPath.includes('.wav') || rawPath.includes('subfolder=audio') || mediaType === 'audio')
+
+  const isVideoMedia =
+    typeof rawPath === 'string' &&
+    (rawPath.includes('.mp4') || rawPath.includes('subfolder=video') || mediaType === 'video')
+
+  const isImageMedia = hasMedia && !isAudioMedia && !isVideoMedia
+
+  if (isAudioMedia) return 'audio'
+  if (isImageMedia) return 'image'
+  if (isVideoMedia) return 'video'
+  return 'aux'
+}
+
+function getNodeBorderColor(node) {
+  const cat = getNodeCategory(node)
+  if (cat === 'audio') return NODE_COLORS.audio
+  if (cat === 'image') return NODE_COLORS.image
+  if (cat === 'video') return NODE_COLORS.video
+  return NODE_COLORS.auxBorder
+}
+
+function getSelectionColor(node) {
+  const cat = getNodeCategory(node)
+  if (cat === 'audio') return NODE_COLORS.audio
+  if (cat === 'image') return NODE_COLORS.image
+  if (cat === 'video') return NODE_COLORS.video
+  return '#CBD5E1' // helper 节点继续用灰色；要极端也可以以后挪到 CSS 变量
+}
+
 
 const lineGenerator = d3.line()
   .x(d => d.x)
@@ -67,15 +121,35 @@ export function getVisibleNodesAndLinks(allNodes) {
   return { visibleNodes, visibleLinks }
 }
 
-/** 仅更新“选中”样式 */
+/** 粗略推断当前“卡片类型” */
+function inferCardType(node) {
+  const hasMedia = !!(node.media && node.media.rawPath)
+  const promptText = (node.parameters) ? (node.parameters.positive_prompt || node.parameters.text) : null
+  const hasPrompt = typeof promptText === 'string' && promptText.trim() !== ''
+
+  const rawPath = hasMedia ? node.media.rawPath : ''
+  const isAudioMedia = typeof rawPath === 'string' &&
+    (rawPath.includes('.mp3') || rawPath.includes('.wav') || rawPath.includes('subfolder=audio'))
+
+  if (node.module_id === 'Init') return 'init'
+  if (!hasMedia && hasPrompt && node.module_id === 'AddText') return 'textFull'
+  if (node.module_id === 'TextToAudio' || isAudioMedia || (node.media && node.media.type === 'audio')) return 'audio'
+  return 'io'
+}
+
+/** 仅更新“选中”样式（按类型着色阴影） */
 export function updateSelectionStyles(svgElement, selectedIds) {
-  const selectedStyle = '0 0 0 3px #3b82f6'
-  const defaultStyle = 'none'
   d3.select(svgElement).selectAll('.node')
     .each(function (d) {
       if (!d || !d.id) return
       const card = d3.select(this).select('.node-card')
-      card.style('box-shadow', selectedIds.includes(d.id) ? selectedStyle : defaultStyle)
+      if (card.empty()) return
+      if (selectedIds.includes(d.id)) {
+        const selColor = getSelectionColor(d)
+        card.style('box-shadow', `0 0 0 2px ${selColor}`)
+      } else {
+        card.style('box-shadow', 'none')
+      }
     })
 }
 
@@ -101,39 +175,16 @@ export function updateVisibility(svgElement, allNodes) {
     .style('display', d => visibleLinkIds.has(`${d.v}->${d.w}`) ? null : 'none')
 }
 
-/** 根据 node 粗略推断当前“卡片类型” */
-function inferCardType(node) {
-  const hasMedia = !!(node.media && node.media.rawPath)
-  const promptText = (node.parameters) ? (node.parameters.positive_prompt || node.parameters.text) : null
-  const hasPrompt = typeof promptText === 'string' && promptText.trim() !== ''
-
-  const rawPath = hasMedia ? node.media.rawPath : ''
-  const isAudioMedia = typeof rawPath === 'string' &&
-    (rawPath.includes('.mp3') || rawPath.includes('.wav') || rawPath.includes('subfolder=audio'))
-
-  if (node.module_id === 'Init') return 'init'
-  if (!hasMedia && hasPrompt && node.module_id === 'AddText') return 'textFull'
-  if (node.module_id === 'TextToAudio' || isAudioMedia || (node.media && node.media.type === 'audio')) return 'audio'
-  return 'io'
-}
-
 /** 完整重绘（重新布局 & 初始缩放） */
 export function renderTree(
   svgElement,
   allNodesData,
   selectedIds,
   emit,           // (eventName, ...args) => void
-  workflowTypes   // { red:{color,type,defaultModuleId}, yellow:{...}, green:{...}, audio?:{...} }
+  workflowTypes   // 仍然用于右上角启动按钮的颜色
 ) {
   const wrapper = d3.select(svgElement)
   wrapper.html('')
-
-  // 禁止在整棵树上选择文字
-  wrapper
-    .style('user-select', 'none')
-    .style('-webkit-user-select', 'none')
-    .style('-moz-user-select', 'none')
-    .style('-ms-user-select', 'none')
 
   const { visibleNodes, visibleLinks } = getVisibleNodesAndLinks(allNodesData)
   if (!visibleNodes.length) {
@@ -141,7 +192,7 @@ export function renderTree(
       .attr('x', '50%').attr('y', '50%')
       .attr('text-anchor', 'middle')
       .attr('fill', '#9ca3af')
-      .text('No data yet. Please start generation from the right side.')
+      .text('No workflow yet. Generate nodes to start.')
     return
   }
 
@@ -217,26 +268,18 @@ export function renderTree(
     .attr('preserveAspectRatio', 'xMidYMid meet')
 
   const defs = svg.append('defs')
-  const audioColor = (workflowTypes.audio && workflowTypes.audio.color) || '#3b82f6'
-  ;[
-    { id: 'red', color: workflowTypes.red.color },
-    { id: 'yellow', color: workflowTypes.yellow.color },
-    { id: 'green', color: workflowTypes.green.color },
-    { id: 'audio', color: audioColor },
-    { id: 'default', color: defaultLinkColor },
-  ].forEach(c => {
-    defs.append('marker')
-      .attr('id', `arrowhead-${c.id}`)
-      .attr('viewBox', '-0 -5 10 10')
-      .attr('refX', 10).attr('refY', 0)
-      .attr('orient', 'auto')
-      .attr('markerWidth', 6).attr('markerHeight', 6)
-      .attr('xoverflow', 'visible')
-      .append('path')
-      .attr('d', 'M 0,-5 L 10 ,0 L 0,5')
-      .style('fill', c.color)
-      .style('stroke', 'none')
-  })
+  // 只保留一种灰色箭头
+  defs.append('marker')
+    .attr('id', 'arrowhead-default')
+    .attr('viewBox', '-0 -5 10 10')
+    .attr('refX', 10).attr('refY', 0)
+    .attr('orient', 'auto')
+    .attr('markerWidth', 6).attr('markerHeight', 6)
+    .attr('xoverflow', 'visible')
+    .append('path')
+    .attr('d', 'M 0,-5 L 10 ,0 L 0,5')
+    .style('fill', defaultLinkColor)
+    .style('stroke', 'none')
 
   const layoutGroup = svg.append('g')
   const linkGroup = layoutGroup.append('g').attr('class', 'links')
@@ -267,22 +310,7 @@ export function renderTree(
     }
   })
 
-  function getLinkStyle(d) {
-    const target = allNodesData.find(n => n.id === d.w)
-    const linkColor = target && target.linkColor
-
-    if (linkColor === workflowTypes.red.color) {
-      return { color: workflowTypes.red.color, id: 'url(#arrowhead-red)' }
-    }
-    if (linkColor === workflowTypes.yellow.color) {
-      return { color: workflowTypes.yellow.color, id: 'url(#arrowhead-yellow)' }
-    }
-    if (linkColor === workflowTypes.green.color) {
-      return { color: workflowTypes.green.color, id: 'url(#arrowhead-green)' }
-    }
-    if (linkColor === audioColor) {
-      return { color: audioColor, id: 'url(#arrowhead-audio)' }
-    }
+  function getLinkStyle() {
     return { color: defaultLinkColor, id: 'url(#arrowhead-default)' }
   }
 
@@ -291,8 +319,8 @@ export function renderTree(
     .data(dagreEdges)
     .enter().append('path')
     .attr('class', 'link')
-    .each(function (d) {
-      const st = getLinkStyle(d)
+    .each(function () {
+      const st = getLinkStyle()
       d3.select(this).style('stroke', st.color).attr('marker-end', st.id)
     })
     .attr('d', d => lineGenerator(d.points))
@@ -311,6 +339,8 @@ export function renderTree(
    * 统一构建 header：左标题 + 右侧 [-][+][x]
    */
   function buildHeader(card, d) {
+    let isEditingTitle = false
+    
     const header = card.append('xhtml:div')
       .style('display', 'flex')
       .style('justify-content', 'space-between')
@@ -320,69 +350,114 @@ export function renderTree(
       .style('flex-shrink', '0')
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
-      .style('-moz-user-select', 'none')
-      .style('-ms-user-select', 'none')
+
+    // ★ 按节点类型设置 header 背景色（来自 CSS 变量）
+    const cat = getNodeCategory(d)
+    let headerBg = '#F9FAFB' // 默认灰
+
+    if (cat === 'image') {
+      headerBg = NODE_COLORS.imageSoft
+    } else if (cat === 'video') {
+      headerBg = NODE_COLORS.videoSoft
+    } else if (cat === 'audio') {
+      headerBg = NODE_COLORS.audioSoft
+    }
+
+    header
+      .style('background-color', headerBg)
+      .attr('data-node-category', cat)
 
     const title = header.append('xhtml:div')
-      .style('font-size', '10px')
-      .style('font-weight', '600')
-      .style('color', '#111827')
-      .style('overflow', 'hidden')
-      .style('text-overflow', 'ellipsis')
-      .style('white-space', 'nowrap')
-      .style('min-width', '0')
+  .style('font-size', '10px')
+  .style('font-weight', '600')
+  .style('color', '#111827')
+  .style('overflow', 'hidden')
+  .style('text-overflow', 'ellipsis')
+  .style('white-space', 'nowrap')
+  .style('min-width', '0')
+  .style('cursor', 'text')
+  .text(d.displayName || d.module_id || '(Node)')
 
-    title.text(d.module_id || '(Node)')
+// ★ 双击标题进入编辑模式
+title.on('dblclick', (ev) => {
+  ev.stopPropagation()
+  if (isEditingTitle) return
+  isEditingTitle = true
+
+  const currentLabel = d.displayName || d.module_id || '(Node)'
+
+  // 清空原文字，改成一个 input
+  title.text(null)
+    .style('border', '1px dashed #9ca3af')
+    .style('border-radius', '4px')
+    .style('padding', '1px 3px')
+
+  const input = title.append('xhtml:input')
+    .attr('type', 'text')
+    .attr('value', currentLabel)
+    .style('width', '100%')
+    .style('font-size', '10px')
+    .style('font-weight', '600')
+    .style('color', '#111827')
+    .style('border', 'none')
+    .style('outline', 'none')
+    .style('background', 'transparent')
+    .on('mousedown', ev2 => ev2.stopPropagation())
+
+  const inputNode = input.node()
+    if (inputNode) {
+      setTimeout(() => {
+        inputNode.focus()
+        inputNode.select()
+      }, 0)
+    }
+
+    function finishEdit(commit) {
+      if (!isEditingTitle) return
+      isEditingTitle = false
+
+      const newText = commit && inputNode
+        ? inputNode.value.trim()
+        : currentLabel
+
+      const finalLabel = newText || currentLabel
+      d.displayName = finalLabel   // 记录在节点对象里
+
+      // 还原标题展示
+      title.selectAll('*').remove()
+      title
+        .style('border', 'none')
+        .style('padding', '0')
+        .text(finalLabel)
+    }
+
+    // 回车确认
+    d3.select(inputNode).on('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        e.stopPropagation()
+        finishEdit(true)
+        // 通知外部更新（父组件可以监听 'rename-node' 来改 nodes）
+        emit('rename-node', { id: d.id, label: d.displayName })
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        e.stopPropagation()
+        finishEdit(false)
+      }
+    })
+
+    // 失焦也视作确认
+    d3.select(inputNode).on('blur', () => {
+      finishEdit(true)
+      emit('rename-node', { id: d.id, label: d.displayName })
+    })
+  })
+
 
     const toolbar = header.append('xhtml:div')
       .style('display', 'flex')
       .style('gap', '4px')
       .style('align-items', 'center')
-
-    // helper to create round icon buttons with hover
-    function makeIconButton(text, options = {}) {
-      const {
-        border = '1px solid #e5e7eb',
-        bg = '#ffffff',
-        color = '#6b7280',
-        hoverBg = '#f9fafb',
-        hoverBorder = border,
-        hoverColor = color,
-        className = ''
-      } = options
-
-      const btn = toolbar.append('xhtml:button')
-        .text(text)
-        .attr('class', className)
-        .style('display', 'flex')
-        .style('align-items', 'center')
-        .style('justify-content', 'center')
-        .style('padding', '0')
-        .style('width', '18px')
-        .style('height', '18px')
-        .style('border-radius', '999px')
-        .style('border', border)
-        .style('background', bg)
-        .style('font-size', '11px')
-        .style('line-height', '1')
-        .style('color', color)
-        .style('cursor', 'pointer')
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('mouseenter', function () {
-          d3.select(this)
-            .style('background', hoverBg)
-            .style('border', hoverBorder)
-            .style('color', hoverColor)
-        })
-        .on('mouseleave', function () {
-          d3.select(this)
-            .style('background', bg)
-            .style('border', border)
-            .style('color', color)
-        })
-
-      return btn
-    }
 
     // 是否有子节点（决定要不要显示折叠按钮）
     const tempMap = new Map(allNodesData.map(n => [n.id, { ...n, children: [] }]))
@@ -395,52 +470,110 @@ export function renderTree(
 
     // 折叠（- / +）
     if (hasChildren) {
-      const isCollapsed = !!d._collapsed
-      const collapseBtn = makeIconButton(
-        isCollapsed ? '+' : '-',
-        {
-          border: '1px solid #e5e7eb',
-          bg: '#ffffff',
-          color: isCollapsed ? '#E4080A' : '#9ca3af',
-          hoverBg: '#f3f4f6',
-          hoverBorder: '1px solid #d1d5db',
-          hoverColor: isCollapsed ? '#b91c1c' : '#4b5563',
-          className: 'collapse-btn'
-        }
-      )
-      collapseBtn.on('click', ev => {
-        ev.stopPropagation()
-        emit('toggle-collapse', d.id)
-      })
+      const collapseBtn = toolbar.append('xhtml:button')
+        .attr('class', 'collapse-btn')
+        .text(d._collapsed ? '+' : '-')
+        .style('width', '18px')
+        .style('height', '18px')
+        .style('border-radius', '999px')
+        .style('border', '1px solid #e5e7eb')
+        .style('background', '#ffffff')
+        .style('font-size', '12px')
+        .style('line-height', '1')
+        .style('display', 'inline-flex')
+        .style('align-items', 'center')
+        .style('justify-content', 'center')
+        .style('color', d._collapsed ? '#E4080A' : '#9ca3af')
+        .style('cursor', 'pointer')
+        .style('user-select', 'none')
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('click', ev => {
+          ev.stopPropagation()
+          emit('toggle-collapse', d.id)
+        })
+        .on('mouseenter', function () {
+          d3.select(this)
+            .style('background', '#6b7280')   // gray-500
+            .style('color', '#ffffff')
+            .style('border-color', '#4b5563') // gray-600
+        })
+        .on('mouseleave', function () {
+          d3.select(this)
+            .style('background', '#ffffff')
+            .style('color', d._collapsed ? '#E4080A' : '#9ca3af')
+            .style('border-color', '#e5e7eb')
+        })
     }
 
     // 复制（占位）
-    const cloneBtn = makeIconButton('+', {
-      border: '1px solid #e5e7eb',
-      bg: '#ffffff',
-      color: '#6b7280',
-      hoverBg: '#f3f4f6',
-      hoverBorder: '1px solid #d1d5db',
-      hoverColor: '#111827'
-    })
-    cloneBtn.on('click', ev => {
-      ev.stopPropagation()
-      console.log('[TODO] clone node', d.id)
-    })
+    const cloneHeaderBtn = toolbar.append('xhtml:button')
+      .text('+')
+      .style('width', '18px')
+      .style('height', '18px')
+      .style('border-radius', '999px')
+      .style('border', '1px solid #e5e7eb')
+      .style('background', '#ffffff')
+      .style('font-size', '12px')
+      .style('line-height', '1')
+      .style('display', 'inline-flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('color', '#6b7280')
+      .style('cursor', 'pointer')
+      .style('user-select', 'none')
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('click', ev => {
+        ev.stopPropagation()
+        // TODO: clone node
+        console.log('[TODO] clone node', d.id)
+      })
+      .on('mouseenter', function () {
+        d3.select(this)
+          .style('background', '#6b7280')
+          .style('color', '#ffffff')
+          .style('border-color', '#4b5563')
+      })
+      .on('mouseleave', function () {
+        d3.select(this)
+          .style('background', '#ffffff')
+          .style('color', '#6b7280')
+          .style('border-color', '#e5e7eb')
+      })
 
     // 删除
-    const deleteBtn = makeIconButton('×', {
-      border: '1px solid #fecaca',
-      bg: '#ffffff',
-      color: '#E4080A',
-      hoverBg: '#fee2e2',
-      hoverBorder: '1px solid #fecaca',
-      hoverColor: '#b91c1c'
-    })
-    deleteBtn.on('click', ev => {
-      ev.stopPropagation()
-      emit('delete-node', d.id)
-    })
+    const deleteHeaderBtn = toolbar.append('xhtml:button')
+      .text('×')
+      .style('width', '18px')
+      .style('height', '18px')
+      .style('border-radius', '999px')
+      .style('border', '1px solid #fecaca')   // red-200
+      .style('background', '#ffffff')
+      .style('font-size', '12px')
+      .style('line-height', '1')
+      .style('display', 'inline-flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('color', '#dc2626')              // red-600
+      .style('cursor', 'pointer')
+      .style('user-select', 'none')
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('click', ev => {
+        ev.stopPropagation()
+        emit('delete-node', d.id)
+      })
+      .on('mouseenter', function () {
+        d3.select(this)
+          .style('background', '#dc2626')
+          .style('color', '#ffffff')
+          .style('border-color', '#dc2626')
+      })
+      .on('mouseleave', function () {
+        d3.select(this)
+          .style('background', '#ffffff')
+          .style('color', '#dc2626')
+          .style('border-color', '#fecaca')
+      })
+
 
     return header
   }
@@ -476,18 +609,21 @@ export function renderTree(
       .style('display', 'flex')
       .style('flex-direction', 'column')
       .style('border-width', '2px')
-      .style('border-color', '#d1d5db')
+      .style('border-color', getNodeBorderColor(d))
       .style('border-radius', '8px')
       .style('position', 'relative')
       .style('cursor', 'pointer')
       .style('background-color', '#ffffff')
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
-      .style('-moz-user-select', 'none')
-      .style('-ms-user-select', 'none')
 
-    // 选中
-    card.style('box-shadow', selectedIds.includes(d.id) ? '0 0 0 3px #3b82f6' : 'none')
+    if (selectedIds.includes(d.id)) {
+      const selColor = getSelectionColor(d)
+      card.style('box-shadow', `0 0 0 2px ${selColor}`)
+    } else {
+      card.style('box-shadow', 'none')
+    }
+
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button')) return
       ev.stopPropagation()
@@ -495,26 +631,21 @@ export function renderTree(
       const on = selected.has(d.id)
       if (on) selected.delete(d.id)
       else if (selected.size < 2) selected.add(d.id)
-      card.style('box-shadow', on ? 'none' : '0 0 0 3px #3b82f6')
+      const selColor = getSelectionColor(d)
+      card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
       emit('update:selectedIds', Array.from(selected))
     })
 
     card.on('mouseenter', () => card.selectAll('.dots-container').style('opacity', '1'))
       .on('mouseleave', () => card.selectAll('.dots-container').style('opacity', '0'))
 
-    // header
     buildHeader(card, d)
 
-    // 主体：通栏文本 + 预留按钮区域
     const body = card.append('xhtml:div')
       .style('flex', '1 1 auto')
       .style('min-height', '0')
       .style('display', 'flex')
       .style('flex-direction', 'column')
-      .style('user-select', 'none')
-      .style('-webkit-user-select', 'none')
-      .style('-moz-user-select', 'none')
-      .style('-ms-user-select', 'none')
 
     const textArea = body.append('xhtml:div')
       .style('flex', '1 1 auto')
@@ -524,11 +655,13 @@ export function renderTree(
       .style('white-space', 'pre-wrap')
       .style('word-break', 'break-all')
       .style('border-bottom', '1px dashed #e5e7eb')
+      .style('user-select', 'none')
+      .style('-webkit-user-select', 'none')
       .on('mousedown', ev => ev.stopPropagation())
 
     textArea.append('xhtml:div')
       .style('opacity', promptText ? '0.7' : '0.4')
-      .text(promptText || '(Original input / prompt)')
+      .text(promptText || '(Prompt text placeholder)')
 
     const toolbar = body.append('xhtml:div')
       .style('flex-shrink', '0')
@@ -537,23 +670,107 @@ export function renderTree(
       .style('justify-content', 'flex-end')
       .style('gap', '4px')
 
-    // 预留控制按钮（占位）
-    ;['Cut', 'Refine', 'Flow'].forEach(label => {
-      toolbar.append('xhtml:button')
-        .text(label)
-        .style('width', '32px')
-        .style('height', '18px')
-        .style('border-radius', '999px')
-        .style('border', '1px solid #e5e7eb')
-        .style('background', '#f9fafb')
-        .style('font-size', '10px')
-        .style('cursor', 'pointer')
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('click', ev => {
-          ev.stopPropagation()
-          console.log('[TODO] text toolbar click', label, d.id)
-        })
-    })
+    // Collapse button
+    const collapseBtn = toolbar.append('xhtml:button')
+      .attr('class', 'collapse-btn')
+      .text(d._collapsed ? '+' : '-')
+      .style('width', '18px')
+      .style('height', '18px')
+      .style('border-radius', '999px')
+      .style('border', '1px solid #e5e7eb')
+      .style('background', '#ffffff')
+      .style('font-size', '12px')
+      .style('line-height', '1')
+      .style('display', 'inline-flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('color', d._collapsed ? '#E4080A' : '#6b7280') // gray-500
+      .style('cursor', 'pointer')
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('click', ev => {
+        ev.stopPropagation()
+        emit('toggle-collapse', d.id)
+      })
+      .on('mouseenter', function () {
+        d3.select(this)
+          .style('background', '#6b7280')   // gray-500
+          .style('color', '#ffffff')
+          .style('border-color', '#4b5563') // gray-600
+      })
+      .on('mouseleave', function () {
+        d3.select(this)
+          .style('background', '#ffffff')
+          .style('color', d._collapsed ? '#E4080A' : '#6b7280')
+          .style('border-color', '#e5e7eb')
+      })
+
+
+    // Clone button
+    const cloneBtn = toolbar.append('xhtml:button')
+      .text('+')
+      .style('width', '18px')
+      .style('height', '18px')
+      .style('border-radius', '999px')
+      .style('border', '1px solid #e5e7eb')
+      .style('background', '#ffffff')
+      .style('font-size', '12px')
+      .style('line-height', '1')
+      .style('display', 'inline-flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('color', '#6b7280')
+      .style('cursor', 'pointer')
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('click', ev => {
+        ev.stopPropagation()
+        // TODO: clone node logic
+        console.log('[TODO] clone node', d.id)
+      })
+      .on('mouseenter', function () {
+        d3.select(this)
+          .style('background', '#6b7280')
+          .style('color', '#ffffff')
+          .style('border-color', '#4b5563')
+      })
+      .on('mouseleave', function () {
+        d3.select(this)
+          .style('background', '#ffffff')
+          .style('color', '#6b7280')
+          .style('border-color', '#e5e7eb')
+      })
+
+    // Delete button
+    const deleteBtn = toolbar.append('xhtml:button')
+      .text('×')
+      .style('width', '18px')
+      .style('height', '18px')
+      .style('border-radius', '999px')
+      .style('border', '1px solid #fecaca')   // red-200
+      .style('background', '#ffffff')
+      .style('font-size', '12px')
+      .style('line-height', '1')
+      .style('display', 'inline-flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('color', '#dc2626')              // red-600
+      .style('cursor', 'pointer')
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('click', ev => {
+        ev.stopPropagation()
+        emit('delete-node', d.id)
+      })
+      .on('mouseenter', function () {
+        d3.select(this)
+          .style('background', '#dc2626')
+          .style('color', '#ffffff')
+          .style('border-color', '#dc2626')
+      })
+      .on('mouseleave', function () {
+        d3.select(this)
+          .style('background', '#ffffff')
+          .style('color', '#dc2626')
+          .style('border-color', '#fecaca')
+      })
 
     addTooltip(gEl, d)
   }
@@ -579,17 +796,21 @@ export function renderTree(
       .style('display', 'flex')
       .style('flex-direction', 'column')
       .style('border-width', '2px')
-      .style('border-color', '#d1d5db')
+      .style('border-color', getNodeBorderColor(d))
       .style('border-radius', '8px')
       .style('position', 'relative')
       .style('cursor', 'pointer')
       .style('background-color', '#ffffff')
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
-      .style('-moz-user-select', 'none')
-      .style('-ms-user-select', 'none')
 
-    card.style('box-shadow', selectedIds.includes(d.id) ? '0 0 0 3px #3b82f6' : 'none')
+    if (selectedIds.includes(d.id)) {
+      const selColor = getSelectionColor(d)
+      card.style('box-shadow', `0 0 0 2px ${selColor}`)
+    } else {
+      card.style('box-shadow', 'none')
+    }
+
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button')) return
       ev.stopPropagation()
@@ -597,14 +818,14 @@ export function renderTree(
       const on = selected.has(d.id)
       if (on) selected.delete(d.id)
       else if (selected.size < 2) selected.add(d.id)
-      card.style('box-shadow', on ? 'none' : '0 0 0 3px #3b82f6')
+      const selColor = getSelectionColor(d)
+      card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
       emit('update:selectedIds', Array.from(selected))
     })
 
     card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
       .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
 
-    // header：统一 [+ - x]
     buildHeader(card, d)
 
     const body = card.append('xhtml:div')
@@ -614,10 +835,6 @@ export function renderTree(
       .style('flex-direction', 'column')
       .style('padding', '4px 6px')
       .style('gap', '4px')
-      .style('user-select', 'none')
-      .style('-webkit-user-select', 'none')
-      .style('-moz-user-select', 'none')
-      .style('-ms-user-select', 'none')
 
     if (promptText && promptText.trim() !== '') {
       body.append('xhtml:div')
@@ -627,6 +844,8 @@ export function renderTree(
         .style('word-break', 'break-all')
         .style('max-height', '40px')
         .style('overflow', 'hidden')
+        .style('user-select', 'none')
+        .style('-webkit-user-select', 'none')
         .text(promptText)
         .on('mousedown', ev => ev.stopPropagation())
     }
@@ -642,13 +861,14 @@ export function renderTree(
       .style('width', '32px')
       .style('height', '32px')
       .style('border', 'none')
-      .style('background-color', '#3b82f6')
-      .style('color', 'white')
+      .style('background-color', NODE_COLORS.audio)
+      .style('color', '#ffffff')
       .style('border-radius', '50%')
       .style('font-size', '16px')
       .style('line-height', '32px')
       .style('flex-shrink', '0')
       .style('cursor', 'pointer')
+      .style('user-select', 'none')
       .html('▶')
       .on('mousedown', ev => ev.stopPropagation())
 
@@ -671,7 +891,7 @@ export function renderTree(
     const wavesurfer = WaveSurfer.create({
       container: waveformDiv.node(),
       waveColor: '#9ca3af',
-      progressColor: '#3b82f6',
+      progressColor: NODE_COLORS.audio,
       height: 20,
       barHeight: 2,
       barWidth: 2,
@@ -694,7 +914,7 @@ export function renderTree(
 
     wavesurfer.on('error', (err) => {
       console.error('WaveSurfer error:', err)
-      waveformDiv.html('<span style="color:red; font-size:10px;">Audio loading error (CORS or network).</span>')
+      waveformDiv.html(`<span style="color:red; font-size:10px;">Audio error: ${err}</span>`)
     })
 
     playBtn.on('click', ev => {
@@ -711,7 +931,6 @@ export function renderTree(
       wavesurfer.destroy()
     })
 
-    // 右侧类型按钮（audio workflow）
     const dots = card.append('xhtml:div')
       .attr('class', 'dots-container')
       .style('position', 'absolute')
@@ -762,7 +981,7 @@ export function renderTree(
       .style('display', 'flex')
       .style('align-items', 'center')
       .style('justify-content', 'center')
-      .style('color', '#3b82f6')
+      .style('color', NODE_COLORS.audio)
       .style('font-size', '1.125rem')
       .style('border', 'none')
       .style('background-color', 'transparent')
@@ -784,8 +1003,13 @@ export function renderTree(
     const hasMedia = !!(d.media && d.media.rawPath)
     const mediaUrl = hasMedia ? d.media.url : ''
     const rawPath = hasMedia ? d.media.rawPath : ''
-    const isVideo = typeof rawPath === 'string' && (rawPath.includes('.mp4') || rawPath.includes('subfolder=video'))
-    const isImage = hasMedia && !isVideo
+    const mediaType = d.media && d.media.type
+
+    const isVideo =
+      typeof rawPath === 'string' &&
+      (rawPath.includes('.mp4') || rawPath.includes('subfolder=video') || mediaType === 'video')
+
+    const isImage = hasMedia && !isVideo && mediaType !== 'audio'
     const canAddToStitch = hasMedia && (isImage || isVideo)
 
     const promptText = (d.parameters) ? (d.parameters.positive_prompt || d.parameters.text) : null
@@ -806,20 +1030,19 @@ export function renderTree(
       .style('flex-direction', 'column')
       .style('border-width', '2px')
       .style('border-radius', '8px')
+      .style('border-color', getNodeBorderColor(d))
       .style('position', 'relative')
       .style('cursor', 'pointer')
       .style('background-color', '#ffffff')
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
-      .style('-moz-user-select', 'none')
-      .style('-ms-user-select', 'none')
 
-    const border =
-      d.status === 'running' ? '#3b82f6' :
-      d.status === 'success' ? '#22c55e' :
-      d.status === 'error'   ? '#ef4444' : '#d1d5db'
-    card.style('border-color', border)
-    card.style('box-shadow', selectedIds.includes(d.id) ? '0 0 0 3px #3b82f6' : 'none')
+    if (selectedIds.includes(d.id)) {
+      const selColor = getSelectionColor(d)
+      card.style('box-shadow', `0 0 0 2px ${selColor}`)
+    } else {
+      card.style('box-shadow', 'none')
+    }
 
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
@@ -828,14 +1051,14 @@ export function renderTree(
       const on = selected.has(d.id)
       if (on) selected.delete(d.id)
       else if (selected.size < 2) selected.add(d.id)
-      card.style('box-shadow', on ? 'none' : '0 0 0 3px #3b82f6')
+      const selColor = getSelectionColor(d)
+      card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
       emit('update:selectedIds', Array.from(selected))
     })
 
     card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
       .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
 
-    // header
     buildHeader(card, d)
 
     const body = card.append('xhtml:div')
@@ -843,26 +1066,21 @@ export function renderTree(
       .style('min-height', '0')
       .style('display', 'flex')
       .style('padding', '4px 4px')
-      .style('user-select', 'none')
-      .style('-webkit-user-select', 'none')
-      .style('-moz-user-select', 'none')
-      .style('-ms-user-select', 'none')
 
-    // 左侧 Input
     const left = body.append('xhtml:div')
       .style('flex', '1 1 0')
       .style('min-width', '0')
-      .style('padding', '4px 6px')
+      .style('padding', '2px 4px')
       .style('border-right', '1px solid #e5e7eb')
       .style('display', 'flex')
       .style('flex-direction', 'column')
       .style('gap', '4px')
-      .style('background', '#f9fafb')
 
     left.append('xhtml:div')
       .style('font-size', '9px')
       .style('font-weight', '600')
       .style('color', '#6b7280')
+      .style('user-select', 'none')
       .text('Input')
 
     if (hasPrompt) {
@@ -873,29 +1091,31 @@ export function renderTree(
         .style('word-break', 'break-all')
         .style('max-height', '48px')
         .style('overflow', 'hidden')
+        .style('user-select', 'none')
+        .style('-webkit-user-select', 'none')
         .text(promptText)
         .on('mousedown', ev => ev.stopPropagation())
     } else {
       left.append('xhtml:div')
         .style('font-size', '10px')
         .style('color', '#9ca3af')
-        .text('(Prompt is empty)')
+        .style('user-select', 'none')
+        .text('(Prompt not provided yet)')
     }
 
-    // 简单注明输入类型
     const inputTypeRow = left.append('xhtml:div')
       .style('font-size', '9px')
       .style('color', '#6b7280')
+      .style('user-select', 'none')
 
     if (isImage) {
       inputTypeRow.text('Image + text (from upstream)')
     } else if (isVideo) {
       inputTypeRow.text('Video + text (from upstream)')
     } else {
-      inputTypeRow.text('Text / upstream workflow output')
+      inputTypeRow.text('Text / upstream result')
     }
 
-    // 右侧 Output
     const right = body.append('xhtml:div')
       .style('flex', '1 1 0')
       .style('min-width', '0')
@@ -913,6 +1133,7 @@ export function renderTree(
       .style('font-size', '9px')
       .style('font-weight', '600')
       .style('color', '#6b7280')
+      .style('user-select', 'none')
       .text('Output')
 
     if (hasMedia) {
@@ -952,28 +1173,10 @@ export function renderTree(
       right.append('xhtml:div')
         .style('font-size', '11px')
         .style('color', '#9ca3af')
-        .text('No output yet.')
+        .style('user-select', 'none')
+        .text('(Output placeholder)')
     }
 
-    // 输出类型提示
-    const outputHint = right.append('xhtml:div')
-      .style('position', 'absolute')
-      .style('bottom', '2px')
-      .style('right', '4px')
-      .style('font-size', '9px')
-      .style('color', '#9ca3af')
-
-    if (isVideo) {
-      outputHint.text('Video preview')
-    } else if (isImage) {
-      outputHint.text('Image output')
-    } else if (hasMedia) {
-      outputHint.text('Media output')
-    } else {
-      outputHint.text('Pending generation')
-    }
-
-    // 右上角 workflow 类型按钮
     const dots = right.append('xhtml:div')
       .attr('class', 'dots-container')
       .style('position', 'absolute')
@@ -1014,13 +1217,13 @@ export function renderTree(
         })
     })
 
-    // Footer：添加到拼接
     const footer = card.append('xhtml:div')
       .style('display', 'flex')
       .style('justify-content', 'flex-end')
       .style('padding', '2px')
 
     if (canAddToStitch) {
+      const selColor = isVideo ? NODE_COLORS.video : NODE_COLORS.image
       footer.append('xhtml:button')
         .attr('class', 'add-clip-btn')
         .html('▶')
@@ -1031,7 +1234,7 @@ export function renderTree(
         .style('display', 'flex')
         .style('align-items', 'center')
         .style('justify-content', 'center')
-        .style('color', '#3b82f6')
+        .style('color', selColor)
         .style('font-size', '1.125rem')
         .style('border', 'none')
         .style('background-color', 'transparent')
@@ -1057,7 +1260,7 @@ export function renderTree(
       gEl.append('circle')
         .attr('r', 30)
         .attr('fill', '#fff')
-        .attr('stroke', '#6b7280')
+        .attr('stroke', NODE_COLORS.auxBorder)
         .attr('stroke-width', 2)
 
       gEl.append('text')
@@ -1077,7 +1280,6 @@ export function renderTree(
           emit('update:selectedIds', Array.from(selected))
         })
 
-      // Init 右侧 “+ Text” 按钮
       const btnFo = gEl.append('foreignObject')
         .attr('width', 60)
         .attr('height', 30)
@@ -1097,6 +1299,7 @@ export function renderTree(
         .style('display', 'flex')
         .style('align-items', 'center')
         .style('justify-content', 'center')
+        .style('user-select', 'none')
         .html('+ Text')
         .on('mousedown', (ev) => ev.stopPropagation())
         .on('click', (ev) => {
@@ -1106,7 +1309,6 @@ export function renderTree(
       return
     }
 
-    // 探测是否音频媒体
     const hasMedia = !!(d.media && d.media.rawPath)
     const rawPath = hasMedia ? d.media.rawPath : ''
     const isAudioMedia = typeof rawPath === 'string' &&

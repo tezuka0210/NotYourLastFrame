@@ -18,6 +18,20 @@ body {
   height: 100%;
 }
 
+:root {
+  /* === unified media colors, match NODE_COLORS 旧值 === */
+  --media-aux-border: #E5E7EB;  /* auxBorder */
+
+  --media-image: #8FB7E8;       /* image */
+  --media-video: #8FD1B4;       /* video */
+  --media-audio: #F4A7A8;       /* audio */
+
+  /* soft tints for header / background */
+  --media-image-soft: #E6F0FB;
+  --media-video-soft: #E6F7F0;
+  --media-audio-soft: #FDEBEB;
+}
+
 /* ===================== workflow 节点卡片 ===================== */
 
 .node-card {
@@ -36,7 +50,7 @@ body {
 .node-card:hover {
   border-color: #cbd5f5;
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
-  transform: translateY(-1px);
+  /* transform: translateY(-1px); */
 }
 
 .node-card.selected {
@@ -143,12 +157,13 @@ body {
 
 /* 音频轨：同理 */
 #audio-stitching-panel {
-  min-height: 46px;     /* 原来 56 */
+  min-height: 46px;
   height: 46px;
   display: flex;
   align-items: center;
-  border-top: 1px solid #d1d5db;
-  margin-top: 8px;      /* ✅ 新增：视频轨和音频轨之间留出空隙 */
+  border-top: 1px solid #d1d5db !important; /* 灰色，与系统默认一致 */
+  margin-top: 8px;
+  background: transparent !important;
 }
 
 /* ===================== 视频 / 音频 clips 容器 ===================== */
@@ -213,6 +228,18 @@ body {
   border-radius: 4px;
 }
 
+/* clip-item base stays neutral; type-specific tints below */
+.clip-item-image {
+  background: linear-gradient(to bottom, #ffffff, var(--media-image-soft));
+  border-color: var(--media-image);
+}
+
+.clip-item-video {
+  background: linear-gradient(to bottom, #ffffff, var(--media-video-soft));
+  border-color: var(--media-video);
+}
+
+
 /* ===== 视频底部信息条（icon + name + duration） ===== */
 .clip-meta {
   margin-top: 4px;
@@ -260,25 +287,30 @@ body {
 }
 
 /* ===================== 删除按钮（视频 & 音频） ===================== */
-
 .clip-item .remove-btn,
 .audio-clip-item .remove-btn {
   position: absolute;
   top: -6px;
   right: -6px;
-  background: #ffffff;
-  color: #ef4444;
-  border-radius: 999px;
   width: 18px;
   height: 18px;
+  border-radius: 999px;
+  background: #ffffff;        /* 默认白底 */
+  color: #dc2626;             /* red-600 */
+  border: 1px solid #fecaca;  /* red-200 */
   font-size: 12px;
-  line-height: 16px;
+  line-height: 1;
   text-align: center;
   cursor: pointer;
-  border: 1px solid #fecaca;
   box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
-  opacity: 0.85;
+  opacity: 0.9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition:
+    background-color 0.15s ease-out,
+    color 0.15s ease-out,
+    border-color 0.15s ease-out,
     transform 0.1s ease-out,
     opacity 0.1s ease-out,
     box-shadow 0.1s ease-out;
@@ -286,9 +318,17 @@ body {
 
 .clip-item .remove-btn:hover,
 .audio-clip-item .remove-btn:hover {
+  background-color: #dc2626;  /* hover: 红底 */
+  color: #ffffff;             /* 白色 × */
+  border-color: #dc2626;
   opacity: 1;
   transform: scale(1.05);
   box-shadow: 0 2px 6px rgba(15, 23, 42, 0.28);
+}
+
+.clip-item .remove-btn:active,
+.audio-clip-item .remove-btn:active {
+  transform: scale(0.95);
 }
 
 /* 拖动中的样式（视频 & 音频统一） */
@@ -332,8 +372,8 @@ body {
   height: 40px;
   border-radius: 6px;          /* 原来是 999px，改成和视频一致 */
   padding: 0 12px;
-  background: linear-gradient(to right, #e5f2ff, #e0ecff);
-  border: 1px solid #bfdbfe;
+  background: linear-gradient(to right, var(--media-audio-soft), #ffffff);
+  border: 1px solid var(--media-audio);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -384,3 +424,43 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* ===================== 预览弹窗关闭按钮 ===================== */
+
+.modal-close-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #dc2626;             /* red-600 */
+  border: 1px solid #fecaca;  /* red-200 */
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.18);
+  transition:
+    background-color 0.15s ease-out,
+    color 0.15s ease-out,
+    border-color 0.15s ease-out,
+    transform 0.1s ease-out,
+    box-shadow 0.1s ease-out;
+}
+
+.modal-close-btn:hover {
+  background-color: #dc2626;  /* 红底 */
+  color: #ffffff;             /* 白字 */
+  border-color: #dc2626;
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.28);
+}
+
+.modal-close-btn:active {
+  transform: scale(0.95);
+}
+

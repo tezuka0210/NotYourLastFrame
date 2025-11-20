@@ -28,7 +28,8 @@ const emit = defineEmits([
   'add-clip',
   'open-preview',
   'open-generation',
-  'toggle-collapse'
+  'toggle-collapse',
+  'rename-node'
 ])
 
 // 传给 lib 的 emit 适配器
