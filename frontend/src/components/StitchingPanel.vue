@@ -8,6 +8,49 @@
       @wheel.prevent="handleZoom"
       @scroll="handleTimelineScroll"
     >
+
+      <!-- ★★ Transport strip: collected snapshots (buffer) -->
+      <div id="buffer-strip">
+        <div
+          v-for="(clip, index) in bufferClips"
+          :key="`buffer-${clip.nodeId}-${index}`"
+          class="buffer-item"
+          :class="{
+            'insert-before': isInsertBefore(index),
+            'insert-after': isInsertAfter(index)
+          }"
+          draggable="true"
+          @dragstart="handleDragStart('buffer', index, $event)"
+          @dragover.prevent="onBufferDragOver(index, $event)"
+          @dragleave="onBufferDragLeave"
+          @drop.prevent.stop="onBufferDrop(index, $event)"
+          @dragend="handleDragEnd"
+        >
+          <img
+            v-if="clip.type === 'image'"
+            :src="clip.thumbnailUrl"
+            draggable="false"
+          />
+          <video
+            v-else
+            :src="clip.thumbnailUrl"
+            autoplay
+            loop
+            muted
+            playsinline
+            preload="metadata"
+            draggable="false"
+          ></video>
+        </div>
+
+        <span
+          v-if="bufferClips.length === 0"
+          class="buffer-placeholder"
+        >
+          Click ▶ on any node to collect snapshots here…
+        </span>
+      </div>
+
       <!-- Timeline: width is set dynamically by drawTimeline -->
       <div
         id="timeline-ruler"
@@ -159,13 +202,14 @@
   </div>
 </template>
 
-<script setup>
-import { onMounted, watch } from 'vue'
+<script setup lang="ts">
+import { onMounted, watch, ref } from 'vue'
 import { useStitching } from '@/lib/useStitching.js'
 
 const props = defineProps({
   clips:           { type: Array,  required: true },
   audioClips:      { type: Array,  required: true },
+  bufferClips:     { type: Array, default: () => [] },
   isStitching:     { type: Boolean, default: false },
   stitchResultUrl: { type: [String, null] }
 })
@@ -173,6 +217,7 @@ const props = defineProps({
 const emit = defineEmits([
   'update:clips',
   'update:audioClips',
+  'update:bufferClips', 
   'stitch',
   'remove-clip',
   'remove-audio-clip'
@@ -200,6 +245,43 @@ const {
   handleTimelineMouseMove,
   handleTimelineMouseUp
 } = useStitching(props, emit)
+
+/* ========= buffer-strip 的插入辅助线状态 ========= */
+
+const bufferInsert = ref<null | { index: number; position: 'before' | 'after' }>(null)
+
+function onBufferDragOver(index: number, e: DragEvent) {
+  const target = e.currentTarget as HTMLElement | null
+  if (!target) return
+  const rect = target.getBoundingClientRect()
+  const offsetX = e.clientX - rect.left
+  const position: 'before' | 'after' = offsetX < rect.width / 2 ? 'before' : 'after'
+
+  bufferInsert.value = { index, position }
+  // 仍然把 hover 状态交给通用逻辑
+  handleDragOverItem('buffer', index)
+}
+
+function onBufferDragLeave() {
+  bufferInsert.value = null
+  handleDragLeaveItem()
+}
+
+function onBufferDrop(index: number, e: DragEvent) {
+  let targetIndex = index
+  if (bufferInsert.value && bufferInsert.value.index === index && bufferInsert.value.position === 'after') {
+    targetIndex = index + 1
+  }
+  handleDropOnItem('buffer', targetIndex)
+  bufferInsert.value = null
+}
+
+const isInsertBefore = (i: number) =>
+  bufferInsert.value?.index === i && bufferInsert.value?.position === 'before'
+
+const isInsertAfter = (i: number) =>
+  bufferInsert.value?.index === i && bufferInsert.value?.position === 'after'
+
 
 /* 初次挂载时绘制一次时间轴 */
 onMounted(() => {
@@ -246,4 +328,105 @@ const formatClipDuration = (duration) => {
   return v.toFixed(1) + 's'
 }
 </script>
+
+<style scoped>
+/* 固定整体容器背景，让四条轨道视觉一致 */
+#stitching-panel-wrapper {
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+/* ===== buffer-strip：固定高度 + 底部分割线 ===== */
+
+#buffer-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  box-sizing: border-box;
+  min-height: 64px;
+  max-height: 64px;       /* 避免随着内容微抖 */
+  border-bottom: 1px solid #e5e7eb;  /* ✅ buffer 与时间轴的灰色分隔线 */
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.buffer-item {
+  position: relative;
+  flex: 0 0 auto;
+  width: 72px;
+  height: 48px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid #d1d5db;
+  background: #f9fafb;
+  cursor: grab;
+}
+
+/* 去掉 hover 的上下抖动效果 */
+.buffer-item:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.buffer-item img,
+.buffer-item video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 空 buffer 的占位文字 */
+.buffer-placeholder {
+  font-size: 12px;
+  color: #9ca3af;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* ===== buffer 内插入辅助线：竖线提示 before/after ===== */
+
+.buffer-item.insert-before::before,
+.buffer-item.insert-after::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: #60a5fa;  /* 蓝色提示线 */
+}
+
+.buffer-item.insert-before::before {
+  left: -2px;
+}
+
+.buffer-item.insert-after::after {
+  right: -2px;
+}
+
+/* ===== 轨道分隔线：时间轴下是 video，上 video 下是 audio ===== */
+
+#timeline-ruler {
+  border-top: none; /* 由 buffer-strip 的 border-bottom 做上一条线 */
+}
+
+/* video 轨道上边缘线（和灰色一致） */
+#stitching-panel {
+  border-top: 1px solid #e5e7eb;
+}
+
+/* audio 轨道上边缘线（固定灰色） */
+#audio-stitching-panel {
+  border-top: 1px solid #e5e7eb;
+}
+
+/* 如果你之前给 audio-clip-item 加了背景色，在这里可以继续用媒体色变量 */
+.audio-clip-item {
+  position: relative;
+  border-radius: 6px;
+  border: 1px solid var(--media-audio-bg, #F4A7A8);
+  background: color-mix(in srgb, var(--media-audio-bg, #F4A7A8) 16%, #ffffff);
+}
+</style>
+
 

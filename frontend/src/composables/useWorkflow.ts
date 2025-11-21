@@ -113,6 +113,9 @@ export interface AudioClip {
 // 使用 "可辨识联合类型" (Discriminated Union)
 export type StitchingClip = ImageClip | VideoClip;
 
+// 运输带中的 clip，可以包含三种
+export type BufferClip = ImageClip | VideoClip | AudioClip;
+
 // 预览弹窗的状态
 interface PreviewMedia {
   url: string;
@@ -140,6 +143,9 @@ export function useWorkflow() {
   // 视频拼接
   const stitchingClips = reactive<StitchingClip[]>([])
   const audioClips = reactive<AudioClip[]>([])
+
+  // 上方“运输带 / 缓冲区”
+  const bufferClips = reactive<BufferClip[]>([])
 
   // 预览弹窗
   const isPreviewOpen = ref(false)
@@ -443,48 +449,47 @@ function toggleNodeCollapse(nodeId: string) {
 
   // --- 7. 导出的拼接相关函数 (Actions) ---
 
-  /** (Action) 添加一个片段到拼接序列 (由 WorkflowTree.vue 调用) */
+  /** (Action) 添加一个片段到“运输带” (由 WorkflowTree.vue 调用) */
   async function addClipToStitch(node: AppNode, type: 'image' | 'video' | 'audio') {
     if (!node.media || !node.media.rawPath) return
-    // if (stitchingClips.some(clip => clip.nodeId === node.id)) {
-    //   alert('该片段已在拼接序列中。')
-    //   return
-    // }
-    console.log(`[addClipToStitch]接收到类型：${type}`)
+
+    console.log(`[addClipToStitch] 接收到类型：${type}`)
     try {
-      if (type === 'audio'){
+      if (type === 'audio') {
+        // 音频：拿时长，推到 bufferClips
         const audioDuration = await getVideoDuration(node.media.url)
-        audioClips.push({
+        bufferClips.push({
           nodeId: node.id,
           mediaPath: node.media.rawPath,
           thumbnailUrl: node.media.url,
           type: 'audio',
           duration: audioDuration,
         })
-        console.log(`[addClipToStitch]成功推送到'audioClips', A1轨道现在有:`,audioClips.length,"个剪辑")
-      }else if (type === 'video') {
+        console.log(`[addClipToStitch] 已推入 bufferClips (audio)，当前数量:`, bufferClips.length)
+      } else if (type === 'video') {
         const videoDuration = await getVideoDuration(node.media.url)
-        stitchingClips.push({
+        bufferClips.push({
           nodeId: node.id,
           mediaPath: node.media.rawPath,
           thumbnailUrl: node.media.url,
           type: 'video',
           duration: videoDuration,
         })
-        console.log(`[addClipToStitch]成功推送到'stitchingClips'`)
+        console.log(`[addClipToStitch] 已推入 bufferClips (video)，当前数量:`, bufferClips.length)
       } else {
-        stitchingClips.push({
+        // image：固定 3s
+        bufferClips.push({
           nodeId: node.id,
           mediaPath: node.media.rawPath,
           thumbnailUrl: node.media.url,
           type: 'image',
-          duration: 3.0 // 默认 3 秒
+          duration: 3.0,
         })
-        console.log(`[addClipToStitch]成功推送到'stitchingClips'`)
+        console.log(`[addClipToStitch] 已推入 bufferClips (image)，当前数量:`, bufferClips.length)
       }
     } catch (error: any) {
-      console.error("添加片段时出错:", error)
-      alert("无法加载视频元数据，添加失败。")
+      console.error('添加片段到 bufferClips 时出错:', error)
+      alert('无法加载媒体元数据，添加失败。')
     }
   }
 
@@ -587,6 +592,7 @@ function toggleNodeCollapse(nodeId: string) {
     selectedParentIds,
     stitchingClips,
     audioClips,
+    bufferClips,
     isPreviewOpen,
     previewMedia,
 

@@ -117,6 +117,54 @@ body {
 }
 
 /* ===================== 时间轴 & 拼接区域 ===================== */
+/* =============== Transport strip (buffer above timeline) =============== */
+
+#buffer-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0 4px;
+  min-height: 72px;
+  box-sizing: border-box;
+}
+
+.buffer-item {
+  width: 72px;
+  height: 64px;
+  border-radius: 6px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  overflow: hidden;
+  flex-shrink: 0;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    box-shadow 0.15s ease-out,
+    transform 0.1s ease-out,
+    border-color 0.15s ease-out;
+}
+
+.buffer-item:hover {
+  border-color: #cbd5f5;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.buffer-item img,
+.buffer-item video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.buffer-placeholder {
+  font-size: 11px;
+  color: #9ca3af;
+  font-style: italic;
+}
 
 /* 外层容器：留出内边距，避免贴边 */
 #stitching-panel-wrapper {

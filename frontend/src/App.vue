@@ -36,9 +36,12 @@
           <StitchingPanel
             :clips="stitchingClips"
             :audioClips="audioClips"
+            :bufferClips="bufferClips"
             :is-stitching="isStitching"
             :stitch-result-url="stitchResultUrl"
             @update:clips="handleClipsUpdate"
+            @update:bufferClips="handleBufferUpdate"
+            @update:audioClips="handleAudioUpdate"
             @remove-clip="removeClipFromStitch"
             @remove-audio-clip="removeClipFromAudio"
             @stitch="onStitchRequest"
@@ -80,7 +83,9 @@ import { onMounted, ref, watch, computed } from 'vue'
 import {
   useWorkflow,
   type AppNode,
-  type StitchingClip
+  type StitchingClip,
+  type BufferClip,     
+  type AudioClip      
 } from '@/composables/useWorkflow'
 
 import { buildWorkflowView } from '@/lib/workflowLayout'
@@ -99,6 +104,7 @@ const {
   selectedParentIds,
   stitchingClips,
   audioClips,
+  bufferClips,
   isGenerating,
   isStitching,
   isPreviewOpen,
@@ -122,6 +128,14 @@ const viewNodes = computed(() => buildWorkflowView(allNodes.value))
 
 function handleClipsUpdate(newList: StitchingClip[]) {
   stitchingClips.splice(0, stitchingClips.length, ...newList)
+}
+
+function handleBufferUpdate(newList: BufferClip[]) {
+  bufferClips.splice(0, bufferClips.length, ...newList)
+}
+
+function handleAudioUpdate(newList: AudioClip[]) {
+  audioClips.splice(0, audioClips.length, ...newList)
 }
 
 watch(

@@ -109,8 +109,11 @@ export function useStitching(props, emit) {
       // 让视频轨/音频轨跟时间轴宽度一致
       const videoPanel = document.getElementById('stitching-panel')
       const audioPanel = document.getElementById('audio-stitching-panel')
+      const bufferStrip = document.getElementById('buffer-strip')
+
       if (videoPanel) videoPanel.style.width = timelineWidth + 'px'
       if (audioPanel) audioPanel.style.width = timelineWidth + 'px'
+      if (bufferStrip) bufferStrip.style.width = timelineWidth + 'px'
 
       // 当前视窗对应的时间范围（只画这部分）
       const visibleStartPx = scrollLeft
@@ -302,8 +305,34 @@ export function useStitching(props, emit) {
     drawTimeline()
   }
 
-  /* ---------------- 6. 拖拽逻辑（保持你原来的） ---------------- */
+  /* ---------------- 6. 拖拽逻辑（支持 buffer / video / audio） ---------------- */
+  // 小工具：按轨道类型拿对应的列表和事件名
+  function getListAndEventByTrack(trackType) {
+    if (trackType === 'video') {
+      return {
+        raw: props.clips || [],
+        list: [...(props.clips || [])],
+        event: 'update:clips',
+      }
+    }
+    if (trackType === 'audio') {
+      return {
+        raw: props.audioClips || [],
+        list: [...(props.audioClips || [])],
+        event: 'update:audioClips',
+      }
+    }
+    if (trackType === 'buffer') {
+      return {
+        raw: props.bufferClips || [],
+        list: [...(props.bufferClips || [])],
+        event: 'update:bufferClips',
+      }
+    }
+    return null
+  }
 
+  // trackType: 'buffer' | 'video' | 'audio'
   function handleDragStart(trackType, index, e) {
     draggedClip.value = { track: trackType, index }
     if (e?.dataTransfer) {
@@ -321,25 +350,59 @@ export function useStitching(props, emit) {
     draggedOver.value = null
   }
 
+  /**
+   * 在某个 item 上松手：
+   * - 同轨道：重排（video / audio / buffer 内部重排）
+   * - buffer → video/audio：从 buffer 移除，插入到对应轨道的指定位置
+   */
   function handleDropOnItem(targetTrack, targetIndex) {
     const src = draggedClip.value
-    if (!src || src.track !== targetTrack) {
-      console.warn('跨轨道拖放无效。')
+    if (!src) return
+
+    // ① 同轨道重排
+    if (src.track === targetTrack) {
+      const info = getListAndEventByTrack(targetTrack)
+      if (!info) return
+
+      const list = info.list
+      if (src.index === targetIndex) {
+        draggedOver.value = null
+        return
+      }
+
+      const [moved] = list.splice(src.index, 1)
+      if (!moved) return
+      list.splice(targetIndex, 0, moved)
+
+      emit(info.event, list)
+      draggedOver.value = null
       return
     }
-    if (src.index === targetIndex) return
 
-    const isVideo = src.track === 'video'
-    const list = isVideo
-      ? [...(props.clips || [])]
-      : [...(props.audioClips || [])]
-    const emitEvent = isVideo ? 'update:clips' : 'update:audioClips'
+    // ② buffer → video/audio：从 buffer “运”到轨道
+    if (src.track === 'buffer' && (targetTrack === 'video' || targetTrack === 'audio')) {
+      const bufferInfo = getListAndEventByTrack('buffer')
+      const targetInfo = getListAndEventByTrack(targetTrack)
+      if (!bufferInfo || !targetInfo) return
 
-    const [moved] = list.splice(src.index, 1)
-    if (moved) list.splice(targetIndex, 0, moved)
+      const bufferList = bufferInfo.list
+      const targetList = targetInfo.list
 
-    emit(emitEvent, list)
-    draggedOver.value = null
+      const [moved] = bufferList.splice(src.index, 1)
+      if (!moved) return
+
+      // 在目标轨道指定 index 插入
+      targetList.splice(targetIndex, 0, moved)
+
+      emit('update:bufferClips', bufferList)
+      emit(targetInfo.event, targetList)
+
+      draggedOver.value = null
+      draggedClip.value = null
+      return
+    }
+
+    console.warn('暂不支持从', src.track, '拖到', targetTrack)
   }
 
   function handleDragEnd() {
@@ -349,7 +412,8 @@ export function useStitching(props, emit) {
   }
 
   function handleDragOverContainer(trackType) {
-    if (draggedOver.value === null) {
+    // buffer 目前没有“整条轨道”级别的 drop，只标记 video / audio 的容器高亮
+    if (trackType === 'video' || trackType === 'audio') {
       isDraggingOverContainer.value = trackType
     }
   }
@@ -358,28 +422,59 @@ export function useStitching(props, emit) {
     isDraggingOverContainer.value = null
   }
 
+  /**
+   * 在轨道空白处松手：
+   * - 同轨道：移动到轨道末尾
+   * - buffer → video/audio：从 buffer 删除，追加到轨道末尾
+   */
   function handleDropContainer(targetTrack) {
     const src = draggedClip.value
-    if (
-      !src ||
-      src.track !== targetTrack ||
-      isDraggingOverContainer.value !== targetTrack
-    ) {
+    if (!src || (targetTrack !== 'video' && targetTrack !== 'audio')) {
       console.warn('容器拖放无效。')
       return
     }
 
-    const isVideo = src.track === 'video'
-    const list = isVideo
-      ? [...(props.clips || [])]
-      : [...(props.audioClips || [])]
-    const emitEvent = isVideo ? 'update:clips' : 'update:audioClips'
+    // ① 同轨道 -> 移动到末尾
+    if (src.track === targetTrack) {
+      const info = getListAndEventByTrack(targetTrack)
+      if (!info) return
+      const list = info.list
 
-    const [moved] = list.splice(src.index, 1)
-    if (moved) list.push(moved)
+      const [moved] = list.splice(src.index, 1)
+      if (!moved) return
+      list.push(moved)
 
-    emit(emitEvent, list)
+      emit(info.event, list)
+      isDraggingOverContainer.value = null
+      draggedClip.value = null
+      return
+    }
+
+    // ② buffer → video/audio：从 buffer 拿出来追加到轨道末尾
+    if (src.track === 'buffer') {
+      const bufferInfo = getListAndEventByTrack('buffer')
+      const targetInfo = getListAndEventByTrack(targetTrack)
+      if (!bufferInfo || !targetInfo) return
+
+      const bufferList = bufferInfo.list
+      const targetList = targetInfo.list
+
+      const [moved] = bufferList.splice(src.index, 1)
+      if (!moved) return
+
+      targetList.push(moved)
+
+      emit('update:bufferClips', bufferList)
+      emit(targetInfo.event, targetList)
+
+      isDraggingOverContainer.value = null
+      draggedClip.value = null
+      return
+    }
+
+    console.warn('容器拖放：暂不支持从', src.track, '到', targetTrack)
   }
+
 
   /* ---------------- 7. 导出 ---------------- */
 
