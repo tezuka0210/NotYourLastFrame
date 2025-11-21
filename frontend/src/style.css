@@ -315,7 +315,7 @@ body {
   position: relative;
   cursor: grab;
   border-radius: 6px;
-  padding: 4px;
+  padding: 0px;
   background: linear-gradient(to bottom, #ffffff, #f9fafb);
   border: 1px solid #e5e7eb;
   display: flex;

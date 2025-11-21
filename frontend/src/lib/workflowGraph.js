@@ -1061,60 +1061,215 @@ title.on('dblclick', (ev) => {
 
     buildHeader(card, d)
 
+    card.append('xhtml:style').text(`
+      .thin-scroll {
+        overflow-y: overlay; /* 尝试覆盖模式，部分浏览器支持 */
+        scrollbar-gutter: stable; /* 现代浏览器：预留空间防止跳动 */
+      }
+      /* 定义滚动条宽度 */
+      .thin-scroll::-webkit-scrollbar {
+        width: 3px; /* 极细 */
+        height: 3px;
+      }
+      /* 轨道透明 */
+      .thin-scroll::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      /* 滑块默认透明 (不可见) */
+      .thin-scroll::-webkit-scrollbar-thumb {
+        background: transparent;
+        border-radius: 2px;
+      }
+      /* 只有当鼠标悬停在容器上时，滑块才变色 */
+      .thin-scroll:hover::-webkit-scrollbar-thumb {
+        background: #d1d5db; /* 浅灰色 */
+      }
+      .thin-scroll:hover::-webkit-scrollbar-thumb:hover {
+        background: #9ca3af; /* 深一点的灰色 */
+      }
+    `)
+
     const body = card.append('xhtml:div')
       .style('flex', '1 1 auto')
       .style('min-height', '0')
       .style('display', 'flex')
       .style('padding', '4px 4px')
 
+    // --- 左侧主容器 ---
     const left = body.append('xhtml:div')
+      .attr('class', 'thin-scroll nodrag') // 应用上面定义的 class
       .style('flex', '1 1 0')
       .style('min-width', '0')
       .style('padding', '2px 4px')
       .style('border-right', '1px solid #e5e7eb')
       .style('display', 'flex')
       .style('flex-direction', 'column')
-      .style('gap', '4px')
+      .style('gap', '6px')
+      // 关键：这里不再通过 JS 切换 overflow，而是交给 CSS 处理
+      // 这里的 overflow-y 最好设为 auto，让 CSS 的样式去控制显隐
+      .style('overflow-y', 'auto') 
 
-    left.append('xhtml:div')
+    // 【注意】删除了之前写的 card.on('mouseenter.scroll') ... 代码
+    // 因为现在通过 CSS 的 :hover 伪类控制颜色，不再需要 JS 介入布局，从而消除了抖动。
+
+    // 1. 顶部 Header (不变)
+    const headerRow = left.append('xhtml:div')
+      .style('display', 'flex')
+      .style('justify-content', 'space-between')
+      .style('align-items', 'center')
+      .style('margin-bottom', '0px')
+
+    headerRow.append('xhtml:div')
       .style('font-size', '9px')
       .style('font-weight', '600')
       .style('color', '#6b7280')
       .style('user-select', 'none')
       .text('Input')
 
-    if (hasPrompt) {
-      left.append('xhtml:div')
-        .style('font-size', '10px')
-        .style('color', '#374151')
-        .style('white-space', 'pre-wrap')
-        .style('word-break', 'break-all')
-        .style('max-height', '48px')
-        .style('overflow', 'hidden')
-        .style('user-select', 'none')
-        .style('-webkit-user-select', 'none')
-        .text(promptText)
-        .on('mousedown', ev => ev.stopPropagation())
-    } else {
-      left.append('xhtml:div')
-        .style('font-size', '10px')
-        .style('color', '#9ca3af')
-        .style('user-select', 'none')
-        .text('(Prompt not provided yet)')
-    }
-
-    const inputTypeRow = left.append('xhtml:div')
-      .style('font-size', '9px')
+    headerRow.append('xhtml:div')
+      .style('cursor', 'pointer')
+      .style('font-size', '10px')
       .style('color', '#6b7280')
-      .style('user-select', 'none')
+      .style('padding', '0 2px')
+      .text('↻')
+      .attr('title', 'Apply & Regenerate')
+      .on('mouseenter', function() { d3.select(this).style('color', '#2563eb') })
+      .on('mouseleave', function() { d3.select(this).style('color', '#6b7280') })
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('click', (ev) => {
+        ev.stopPropagation()
+        const currentParams = {}
+        left.selectAll('.node-input').each(function() {
+            const el = d3.select(this)
+            const key = el.attr('data-key')
+            let val = el.property('value')
+            if (el.attr('type') === 'number') val = Number(val)
+            if (key) currentParams[key] = val
+        })
+        emit('regenerate-node', d, currentParams)
+      })
 
-    if (isImage) {
-      inputTypeRow.text('Image + text (from upstream)')
-    } else if (isVideo) {
-      inputTypeRow.text('Video + text (from upstream)')
-    } else {
-      inputTypeRow.text('Text / upstream result')
+    // --- 核心渲染函数：增加了 fontSize 参数 ---
+    // titleSize: 标题字号, inputSize: 内容字号
+    const createNestedField = (container, label, key, value, type, isFullWidth = true, titleSize = '7px', inputSize = '8.5px') => {
+        const wrapper = container.append('xhtml:div')
+            .style('display', 'flex')
+            .style('flex-direction', 'column')
+            .style('gap', '1px')
+            
+        if (isFullWidth) {
+            wrapper.style('width', '100%')
+        } else {
+            wrapper
+                .style('flex', '1 1 28%') 
+                .style('min-width', '0')
+        }
+
+        // 标题
+        wrapper.append('xhtml:div')
+            .style('font-size', titleSize)
+            .style('color', '#292f38ff')
+            .style('white-space', 'nowrap')
+            .style('overflow', 'hidden')
+            .style('text-overflow', 'ellipsis')
+            .style('line-height', '1.3') 
+            .style('margin', '0')
+            .style('padding-left','1px')
+            .text(label)
+
+        const contentDiv = wrapper.append('xhtml:div')
+            .style('width', '100%')
+            // 注意：对于 Textarea (Prompt)，不要设 line-height: 0，否则可能切断文字
+            // 只有小参数才设为 0 以消除间距
+            .style('line-height', isFullWidth ? 'normal' : '0')
+
+        let input;
+        if (type === 'textarea') {
+            const hasContent = value && String(value).trim().length > 0
+            let rowCount = 1
+            if (hasContent) {
+                rowCount = (key === 'positive_prompt') ? 3 : 2
+            }
+
+            input = contentDiv.append('xhtml:textarea')
+                .attr('rows', rowCount)
+                .style('resize', 'none')
+                .text(value)
+        } else {
+            input = contentDiv.append('xhtml:input')
+                .attr('type', type === 'number' ? 'number' : 'text')
+                .attr('value', value)
+        }
+
+        // 【关键逻辑】差异化上边距
+        // 如果是 FullWidth (Prompt)，margin-top 为 0 (保持原样)
+        // 如果是其他小参数，margin-top 为 -2px (向上拉紧)
+        const marginTopVal = isFullWidth ? '2px' : '1px'
+        
+
+        input.attr('class', 'node-input thin-scroll')
+             .attr('data-key', key)
+             .style('width', '100%')
+             .style('display', 'block')
+             .style('font-size', inputSize)
+             .style('line-height', '1.3')
+             .style('color', '#747b88ff')
+             .style('background', 'transparent')
+             .style('border', '1px solid transparent')
+             .style('border-radius', '2px')
+             .style('padding', '0px 2px')
+             .style('outline', 'none')
+             .style('font-family', 'inherit')
+             .style('margin-top', marginTopVal) // 应用差异化边距
+             .on('mousedown', ev => ev.stopPropagation())
+             .on('focus', function() { 
+                  d3.select(this).style('background', '#ffffff').style('border-color', '#e5e7eb') 
+             })
+             .on('blur', function() { 
+                  d3.select(this).style('background', 'transparent').style('border-color', 'transparent') 
+             })
+             .on('mouseenter', function() {
+                  if (document.activeElement !== this) d3.select(this).style('background', '#f9fafb')
+              })
+             .on('mouseleave', function() {
+                   if (document.activeElement !== this) d3.select(this).style('background', 'transparent')
+              })
     }
+
+    // --- 数据准备 ---
+    const params = d.parameters || {}
+    const excluded = ['positive_prompt', 'negative_prompt', 'text', 'seed']
+    const smallParams = Object.entries(params).filter(([k]) => !excluded.includes(k))
+
+    // 2. Prompt 模块 (保持原来的标准字号: 标题7px, 内容8.5px)
+    const posVal = params.positive_prompt || params.text || ''
+    createNestedField(left, 'Positive Prompt', 'positive_prompt', posVal, 'textarea', true, '7px', '7px')
+
+    // 3. Negative Prompt 模块 (保持原来的标准字号)
+    const negVal = params.negative_prompt || ''
+    createNestedField(left, 'Negative Prompt', 'negative_prompt', negVal, 'textarea', true, '7px', '7px')
+
+    // 4. 其他参数的大容器
+    if (smallParams.length > 0) {
+        const othersContainer = left.append('xhtml:div')
+            .attr('class', 'others-params-container')
+            .style('display', 'flex')
+            .style('flex-wrap', 'wrap')
+            .style('gap', '3px') // 稍微调小间距
+            .style('padding-top', '6px')
+            .style('border-top', '1px dashed #f3f4f6')
+
+        smallParams.forEach(([key, val]) => {
+            const isNum = typeof val === 'number'
+            const labelName = key.replace(/_/g, ' ')
+            
+            // 【改动5】在这里传入更小的字号
+            // 标题: 6px (极小)
+            // 内容: 7.5px (紧凑)
+            createNestedField(othersContainer, labelName, key, val, isNum ? 'number' : 'text', false, '6.5px', '6.5px')
+        })
+    }
+
 
     const right = body.append('xhtml:div')
       .style('flex', '1 1 0')
