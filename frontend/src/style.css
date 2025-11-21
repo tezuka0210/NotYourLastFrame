@@ -129,12 +129,13 @@ body {
 }
 
 .buffer-item {
+  position: relative; 
   width: 72px;
   height: 64px;
   border-radius: 6px;
   background: #f9fafb;
   border: 1px solid #e5e7eb;
-  overflow: hidden;
+  overflow: visible;      /* ✅ 允许关闭按钮超出卡片 */
   flex-shrink: 0;
   cursor: grab;
   display: flex;
@@ -145,6 +146,17 @@ body {
     transform 0.1s ease-out,
     border-color 0.15s ease-out;
 }
+
+/* 防止缩略图“漏角”，补一个圆角 */
+.buffer-item img,
+.buffer-item video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border-radius: 6px;
+}
+
 
 .buffer-item:hover {
   border-color: #cbd5f5;
@@ -158,6 +170,13 @@ body {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+.buffer-item img,
+.buffer-item video,
+.buffer-meta {
+  position: relative;
+  z-index: 0;
 }
 
 .buffer-placeholder {
@@ -336,7 +355,8 @@ body {
 
 /* ===================== 删除按钮（视频 & 音频） ===================== */
 .clip-item .remove-btn,
-.audio-clip-item .remove-btn {
+.audio-clip-item .remove-btn,
+.buffer-item .remove-btn {
   position: absolute;
   top: -6px;
   right: -6px;
@@ -355,6 +375,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 10; 
   transition:
     background-color 0.15s ease-out,
     color 0.15s ease-out,
@@ -365,7 +386,8 @@ body {
 }
 
 .clip-item .remove-btn:hover,
-.audio-clip-item .remove-btn:hover {
+.audio-clip-item .remove-btn:hover,
+.buffer-item .buffer-remove-btn:hover {
   background-color: #dc2626;  /* hover: 红底 */
   color: #ffffff;             /* 白色 × */
   border-color: #dc2626;
@@ -375,8 +397,23 @@ body {
 }
 
 .clip-item .remove-btn:active,
-.audio-clip-item .remove-btn:active {
+.audio-clip-item .remove-btn:active,
+.buffer-item .buffer-remove-btn:active {
   transform: scale(0.95);
+}
+
+/* buffer 区的关闭按钮：只控制显隐，具体形状复用上面的通用样式 */
+.buffer-remove-btn {
+  position: absolute;
+  top: -7px;     /* 略微超出卡片 */
+  right: -7px;
+  opacity: 0;
+  z-index: 25;    /* 确保盖在缩略图上 */
+  pointer-events: auto;
+}
+
+.buffer-item:hover .buffer-remove-btn {
+  opacity: 1;
 }
 
 /* 拖动中的样式（视频 & 音频统一） */

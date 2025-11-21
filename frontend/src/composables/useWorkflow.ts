@@ -456,17 +456,26 @@ function toggleNodeCollapse(nodeId: string) {
     console.log(`[addClipToStitch] 接收到类型：${type}`)
     try {
       if (type === 'audio') {
-        // 音频：拿时长，推到 bufferClips
-        const audioDuration = await getVideoDuration(node.media.url)
-        bufferClips.push({
-          nodeId: node.id,
-          mediaPath: node.media.rawPath,
-          thumbnailUrl: node.media.url,
-          type: 'audio',
-          duration: audioDuration,
-        })
-        console.log(`[addClipToStitch] 已推入 bufferClips (audio)，当前数量:`, bufferClips.length)
-      } else if (type === 'video') {
+          const audioDuration = await getVideoDuration(node.media!.url)
+
+          // ✅ 优先使用参数里保存的波形图路径（示例字段名：waveform_image）
+          const waveformPath =
+            (node.parameters && (node.parameters as any).waveform_image)
+              ? (node.parameters as any).waveform_image
+              : node.media!.rawPath  // 如果没有，就退回音频本身（至少不会报错）
+
+          const waveformUrl = makeFullUrl(waveformPath)!
+
+          bufferClips.push({
+            nodeId: node.id,
+            mediaPath: node.media!.rawPath,
+            thumbnailUrl: waveformUrl,   // ✅ 现在是波形图 URL
+            type: 'audio',
+            duration: audioDuration,
+          })
+
+          console.log(`[addClipToStitch] 已推入 bufferClips (audio)，当前数量:`, bufferClips.length)
+        } else if (type === 'video') {
         const videoDuration = await getVideoDuration(node.media.url)
         bufferClips.push({
           nodeId: node.id,

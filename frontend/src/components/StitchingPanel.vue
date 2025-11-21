@@ -14,11 +14,18 @@
         <div
           v-for="(clip, index) in bufferClips"
           :key="`buffer-${clip.nodeId}-${index}`"
-          class="buffer-item"
-          :class="{
-            'insert-before': isInsertBefore(index),
-            'insert-after': isInsertAfter(index)
-          }"
+          :class="[
+            'buffer-item',
+            clip.type === 'image'
+              ? 'buffer-item--image'
+              : clip.type === 'video'
+                ? 'buffer-item--video'
+                : 'buffer-item--audio',
+            {
+              'insert-before': isInsertBefore(index),
+              'insert-after': isInsertAfter(index)
+            }
+          ]"
           draggable="true"
           @dragstart="handleDragStart('buffer', index, $event)"
           @dragover.prevent="onBufferDragOver(index, $event)"
@@ -26,21 +33,44 @@
           @drop.prevent.stop="onBufferDrop(index, $event)"
           @dragend="handleDragEnd"
         >
-          <img
-            v-if="clip.type === 'image'"
-            :src="clip.thumbnailUrl"
-            draggable="false"
-          />
-          <video
-            v-else
-            :src="clip.thumbnailUrl"
-            autoplay
-            loop
-            muted
-            playsinline
-            preload="metadata"
-            draggable="false"
-          ></video>
+          <!-- 缩略内容，根据类型区分 -->
+          <template v-if="clip.type === 'image'">
+            <img
+              :src="clip.thumbnailUrl"
+              draggable="false"
+            />
+          </template>
+
+          <template v-else-if="clip.type === 'video'">
+            <video
+              :src="clip.thumbnailUrl"
+              autoplay
+              loop
+              muted
+              playsinline
+              preload="metadata"
+              draggable="false"
+            ></video>
+          </template>
+
+          <!-- 音频：不再显示图像缩略图，只用色块 + 图标区分 -->
+          <template v-else>
+            <div class="buffer-audio-icon">♪</div>
+          </template>
+
+          <!-- 底部元数据条：用对应三原色填充，文字显示关键属性 -->
+          <div class="buffer-meta">
+            {{ getBufferMeta(clip) }}
+          </div>
+
+          <!-- 右上角关闭按钮：复用全局 remove-btn 样式 -->
+          <span
+            class="remove-btn buffer-remove-btn"
+            @mousedown.stop.prevent
+            @click.stop="removeBuffer(index)"
+          >
+            ×
+          </span>
         </div>
 
         <span
@@ -116,6 +146,7 @@
             <!-- 删除按钮 -->
             <span class="remove-btn" @click.stop="removeVideo(index)">×</span>
 
+            <!-- 拖拽覆盖提示 -->
             <div
               v-if="draggedOver?.track === 'video' && draggedOver?.index === index"
               class="absolute inset-0 bg-blue-500 opacity-50 border-2 border-blue-700 pointer-events-none"
@@ -126,7 +157,7 @@
           <span
             v-if="clips.length === 0"
             id="clips-placeholder"
-            class="text-gray-500 italic"
+            class="track-placeholder"
           >
             Drag video / image nodes here…
           </span>
@@ -163,7 +194,6 @@
               <span class="audio-clip-duration">{{ clip.duration.toFixed(1) }}s</span>
             </div>
 
-
             <span class="remove-btn" @click.stop="removeAudio(index)">×</span>
 
             <div
@@ -176,7 +206,7 @@
           <span
             v-if="audioClips.length === 0"
             id="audio-clips-placeholder"
-            class="text-gray-500 italic"
+            class="track-placeholder"
           >
             Drag audio nodes here…
           </span>
@@ -203,8 +233,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, watch, ref } from 'vue'
+import { onMounted, onBeforeUnmount, watch, ref, nextTick } from 'vue'
 import { useStitching } from '@/lib/useStitching.js'
+import WaveSurfer from 'wavesurfer.js'
+
+type WaveSurferInstance = ReturnType<typeof WaveSurfer.create>
 
 const props = defineProps({
   clips:           { type: Array,  required: true },
@@ -269,7 +302,11 @@ function onBufferDragLeave() {
 
 function onBufferDrop(index: number, e: DragEvent) {
   let targetIndex = index
-  if (bufferInsert.value && bufferInsert.value.index === index && bufferInsert.value.position === 'after') {
+  if (
+    bufferInsert.value &&
+    bufferInsert.value.index === index &&
+    bufferInsert.value.position === 'after'
+  ) {
     targetIndex = index + 1
   }
   handleDropOnItem('buffer', targetIndex)
@@ -282,6 +319,66 @@ const isInsertBefore = (i: number) =>
 const isInsertAfter = (i: number) =>
   bufferInsert.value?.index === i && bufferInsert.value?.position === 'after'
 
+/* ========= buffer 中音频缩略图：WaveSurfer 波形 ========= */
+
+const audioWaveformRefs = ref<HTMLElement[]>([])
+const bufferWaveforms = ref<WaveSurferInstance[]>([])
+
+function destroyBufferWaveforms() {
+  bufferWaveforms.value.forEach(ws => {
+    if (ws) {
+      try { ws.destroy() } catch (e) { /* ignore */ }
+    }
+  })
+  bufferWaveforms.value = []
+}
+
+/**
+ * 当 bufferClips 变化时，为其中的 audio 类型创建/更新波形缩略图
+ * 依赖 clip.mediaUrl（建议在 useWorkflow 的 bufferClips 构造时写入）
+ */
+watch(
+  () => props.bufferClips,
+  (newClips: any[]) => {
+    destroyBufferWaveforms()
+    nextTick(() => {
+      newClips.forEach((clip, index) => {
+        if (clip.type !== 'audio') return
+        const el = audioWaveformRefs.value[index]
+        if (!el) return
+
+        const audioUrl: string | undefined = clip.mediaUrl || clip.media_url || clip.audioUrl
+        if (!audioUrl) {
+          // 没有音频 URL，就不画波形，避免报错
+          return
+        }
+
+        const progressColor =
+          getComputedStyle(document.documentElement)
+            .getPropertyValue('--media-audio')
+            .trim() || '#F4A7A8'
+
+        const ws = WaveSurfer.create({
+          container: el,
+          waveColor: '#9ca3af',
+          progressColor,
+          height: 36,
+          barWidth: 2,
+          barGap: 1,
+          barRadius: 2,
+          url: audioUrl
+        })
+
+        bufferWaveforms.value[index] = ws
+      })
+    })
+  },
+  { immediate: true, deep: true }
+)
+
+onBeforeUnmount(() => {
+  destroyBufferWaveforms()
+})
 
 /* 初次挂载时绘制一次时间轴 */
 onMounted(() => {
@@ -313,20 +410,66 @@ watch(
 )
 
 /* 快捷方法 */
-const removeVideo = index => emit('remove-clip', index)
-const removeAudio = index => emit('remove-audio-clip', index)
+const removeVideo = (index: number) => emit('remove-clip', index)
+const removeAudio = (index: number) => emit('remove-audio-clip', index)
 const stitch = () => emit('stitch')
 
+/** buffer 删除：用 v-model:bufferClips 更新上层状态 */
+const removeBuffer = (index: number) => {
+  const next = [...(props.bufferClips as any[])]
+  next.splice(index, 1)
+  emit('update:bufferClips', next)
+}
+
 /* 帮视频块取一个显示名称 */
-const getClipName = (clip) => {
+const getClipName = (clip: any) => {
   return clip.filename || clip.name || clip.nodeId || 'Video'
 }
 
 /* 格式化时长为一位小数，例如 3.2s */
-const formatClipDuration = (duration) => {
+const formatClipDuration = (duration: number) => {
   const v = Number(duration) || 0
   return v.toFixed(1) + 's'
 }
+
+/**
+ * buffer-meta 显示的关键属性
+ * - image / video: 优先显示分辨率（width×height 或 resolution）
+ * - audio: 显示时长（秒）
+ */
+const getBufferMeta = (clip: any): string => {
+  // 音频：时长是最直观的属性
+  if (clip.type === 'audio') {
+    if (clip.duration != null) {
+      const v = Number(clip.duration) || 0
+      return `${v.toFixed(1)} s`
+    }
+    if (clip.sampleRate) {
+      return `${clip.sampleRate} Hz`
+    }
+    return 'Audio'
+  }
+
+  // 图片 / 视频：分辨率优先
+  if (clip.width && clip.height) {
+    return `${clip.width}×${clip.height}`
+  }
+  if (clip.resolution) {
+    return String(clip.resolution)
+  }
+
+  // 没有分辨率信息时，退而求其次用时长（如果有）
+  if (clip.duration != null) {
+    const v = Number(clip.duration) || 0
+    return `${v.toFixed(1)} s`
+  }
+
+  // 最后才 fallback 到类型名
+  if (clip.type === 'image') return 'Image'
+  if (clip.type === 'video') return 'Video'
+  return 'Media'
+}
+
 </script>
 
 <style scoped>
@@ -336,31 +479,46 @@ const formatClipDuration = (duration) => {
   border-radius: 8px;
 }
 
-/* ===== buffer-strip：固定高度 + 底部分割线 ===== */
+/* ===== buffer-strip：固定高度 + 底部分割线，左右不留白 ===== */
 
 #buffer-strip {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 4px 0 8px;  /* ✅ 上 4px，下 8px，避免粗边框压住灰线 */
   box-sizing: border-box;
   min-height: 64px;
-  max-height: 64px;       /* 避免随着内容微抖 */
-  border-bottom: 1px solid #e5e7eb;  /* ✅ buffer 与时间轴的灰色分隔线 */
+  max-height: 64px;
+  border-bottom: 1px solid #e5e7eb;
   overflow-x: auto;
   overflow-y: hidden;
 }
 
+/* buffer 卡片：根据类型加三原色边框和淡填充 */
 .buffer-item {
   position: relative;
   flex: 0 0 auto;
-  width: 72px;
-  height: 48px;
-  border-radius: 6px;
+  width: 80px;
+  height: 56px;
+  border-radius: 8px;
   overflow: hidden;
-  border: 1px solid #d1d5db;
-  background: #f9fafb;
   cursor: grab;
+  background: #ffffff;
+}
+
+.buffer-item--image {
+  border: 2px solid var(--media-image);
+  background: color-mix(in srgb, var(--media-image) 16%, #ffffff);
+}
+
+.buffer-item--video {
+  border: 2px solid var(--media-video);
+  background: color-mix(in srgb, var(--media-video) 16%, #ffffff);
+}
+
+.buffer-item--audio {
+  border: 2px solid var(--media-audio);
+  background: color-mix(in srgb, var(--media-audio) 16%, #ffffff);
 }
 
 /* 去掉 hover 的上下抖动效果 */
@@ -376,8 +534,22 @@ const formatClipDuration = (duration) => {
   object-fit: cover;
 }
 
+/* 音频波形容器：占据中部区域 */
+.buffer-waveform {
+  width: 100%;
+  height: 36px;
+}
+
 /* 空 buffer 的占位文字 */
 .buffer-placeholder {
+  font-size: 12px;
+  color: #9ca3af;
+  font-style: italic;
+  white-space: nowrap;
+}
+
+/* 轨道占位文字，和 buffer 一致的风格 */
+.track-placeholder {
   font-size: 12px;
   color: #9ca3af;
   font-style: italic;
@@ -404,6 +576,38 @@ const formatClipDuration = (duration) => {
   right: -2px;
 }
 
+/* buffer-meta：底部圆角条，用对应类型三原色填充 */
+
+.buffer-meta {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  height: 16px;
+  border-radius: 999px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  color: #ffffff;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 0;          /* ✅ 保证在关闭按钮下面 */
+}
+
+.buffer-item--image .buffer-meta {
+  background: var(--media-image);
+}
+
+.buffer-item--video .buffer-meta {
+  background: var(--media-video);
+}
+
+.buffer-item--audio .buffer-meta {
+  background: var(--media-audio);
+}
+
 /* ===== 轨道分隔线：时间轴下是 video，上 video 下是 audio ===== */
 
 #timeline-ruler {
@@ -420,7 +624,7 @@ const formatClipDuration = (duration) => {
   border-top: 1px solid #e5e7eb;
 }
 
-/* 如果你之前给 audio-clip-item 加了背景色，在这里可以继续用媒体色变量 */
+/* Audio clip 在轨道中的样式（你原来已有，可以保留/微调） */
 .audio-clip-item {
   position: relative;
   border-radius: 6px;
@@ -428,5 +632,3 @@ const formatClipDuration = (duration) => {
   background: color-mix(in srgb, var(--media-audio-bg, #F4A7A8) 16%, #ffffff);
 }
 </style>
-
-
