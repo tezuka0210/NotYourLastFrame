@@ -24,7 +24,7 @@ app = Flask(__name__, template_folder='templates')
 CORS(app)
 
 # --- 模式开关 ----
-APP_MODE = os.getenv('APP_MODE', 'local') 
+APP_MODE = os.getenv('APP_MODE', 'server') 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 print(f"--- 应用程序正在以 {APP_MODE.upper()} 模式运行 ---")
 
