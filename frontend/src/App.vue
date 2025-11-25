@@ -29,6 +29,7 @@
             @open-preview="openPreview"
             @open-generation="handleOpenGenerationPopover"
             @toggle-collapse="toggleNodeCollapse"
+            @create-card="createCard"
           />
         </div>
 
@@ -97,6 +98,7 @@ import GenerationPopover from './components/GenerationPopover.vue'
 
 import LeftPane from './components/LeftPane.vue'
 import RightPane from './components/RightPane.vue'
+import type { S } from 'node_modules/tailwindcss/dist/types-WlZgYgM8.d.mts'
 
 const {
   statusText,
@@ -158,6 +160,30 @@ async function onStitchRequest() {
   if (resultUrl) {
     stitchResultUrl.value = resultUrl
   }
+}
+
+/**
+ * 处理 Init 节点的直接生成请求
+ * @param {Object} parentNode - Init 节点对象
+ * @param {String} moduleId - 要生成的模块ID (这里是 'textFull')
+ */
+const createCard = async (parentNode: AppNode, moduleId: string) => {
+  console.log(`[App] 收到直接生成请求: Parent=${parentNode.id}, Module=${moduleId}`);
+
+  // 1. (重要) 确保选中的父节点是 Init 节点
+  // 因为 handleGenerate 默认使用 selectedParentIds
+  selectedParentIds.value = [parentNode.id];
+
+  // 2. 准备默认参数 (如果 textFull 需要参数的话)
+  const defaultParams = {
+    
+  };
+
+  // 3. 直接调用生成函数 (跳过 UI 弹窗)
+  await handleGenerate(moduleId, defaultParams);
+  
+  // 4. (可选) 生成完后清空选中
+  selectedParentIds.value = []; 
 }
 
 const isGenerationPopoverOpen = ref(false)

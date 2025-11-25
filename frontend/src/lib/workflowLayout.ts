@@ -1,4 +1,5 @@
 // src/lib/workflowLayout.ts
+import App from '@/App.vue'
 import type { AppNode } from '@/composables/useWorkflow'
 
 // 三种卡片类型（后面可以再细分）
@@ -18,7 +19,7 @@ function inferCardType(node: AppNode): CardType {
     return 'init'
   }
 
-  // 2) 纯文本提示词卡（后续可以绑定到专门 module_id，比如 AddText）
+  // 2) 纯文本提示词卡
   if (node.module_id === 'AddText') {
     return 'textFull'
   }
@@ -45,6 +46,7 @@ function buildTitle(node: AppNode): string {
 export function buildWorkflowView(nodes: AppNode[]): ViewNode[] {
   return (nodes || []).map((n) => {
     const cardType = inferCardType(n)
+    //console.log(`workflowLayout.ts ${cardType}`)
     return {
       ...n,
       cardType,

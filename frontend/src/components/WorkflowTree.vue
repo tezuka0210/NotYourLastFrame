@@ -28,6 +28,7 @@ const emit = defineEmits([
   'add-clip',
   'open-preview',
   'open-generation',
+  'create-card',
   'toggle-collapse',
   'rename-node'
 ])

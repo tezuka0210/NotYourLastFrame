@@ -132,7 +132,7 @@ function inferCardType(node) {
     (rawPath.includes('.mp3') || rawPath.includes('.wav') || rawPath.includes('subfolder=audio'))
 
   if (node.module_id === 'Init') return 'init'
-  if (!hasMedia && hasPrompt && node.module_id === 'AddText') return 'textFull'
+  if (node.module_id === 'AddText') return 'textFull'
   if (node.module_id === 'TextToAudio' || isAudioMedia || (node.media && node.media.type === 'audio')) return 'audio'
   return 'io'
 }
@@ -663,7 +663,7 @@ title.on('dblclick', (ev) => {
       .style('opacity', promptText ? '0.7' : '0.4')
       .text(promptText || '(Prompt text placeholder)')
 
-    const toolbar = body.append('xhtml:div')
+    /*const toolbar = body.append('xhtml:div')
       .style('flex-shrink', '0')
       .style('padding', '4px 6px')
       .style('display', 'flex')
@@ -772,7 +772,7 @@ title.on('dblclick', (ev) => {
           .style('border-color', '#fecaca')
       })
 
-    addTooltip(gEl, d)
+    addTooltip(gEl, d)*/
   }
 
   /**
@@ -1436,13 +1436,13 @@ title.on('dblclick', (ev) => {
         })
 
       const btnFo = gEl.append('foreignObject')
-        .attr('width', 60)
-        .attr('height', 30)
+        .attr('width', 20)
+        .attr('height', 20)
         .attr('x', 35)
         .attr('y', -15)
         .style('overflow', 'visible')
       btnFo.append('xhtml:button')
-        .style('background-color', '#f3f4f6')
+        .style('background-color', '#ffffffff')
         .style('border', '1px solid #d1d5db')
         .style('color', '#374151')
         .style('border-radius', '6px')
@@ -1455,11 +1455,11 @@ title.on('dblclick', (ev) => {
         .style('align-items', 'center')
         .style('justify-content', 'center')
         .style('user-select', 'none')
-        .html('+ Text')
+        .html('+')
         .on('mousedown', (ev) => ev.stopPropagation())
         .on('click', (ev) => {
           ev.stopPropagation()
-          emit('open-generation', d, 'AddText', 'util')
+          emit('create-card', d, 'AddText', 'util')
         })
       return
     }
@@ -1470,6 +1470,7 @@ title.on('dblclick', (ev) => {
       (rawPath.includes('.mp3') || rawPath.includes('.wav') || rawPath.includes('subfolder=audio'))
 
     if (cardType === 'textFull') {
+      console.log(`renderTree textFull`)
       renderTextFullNode(gEl, d, selectedIds, emit)
     } else if (cardType === 'audio' || isAudioMedia) {
       renderAudioNode(gEl, d, selectedIds, emit, workflowTypes)
