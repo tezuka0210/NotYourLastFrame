@@ -17,6 +17,17 @@ from moviepy import VideoFileClip, concatenate_videoclips,ImageClip,AudioFileCli
 from database import update_node, get_tree_as_json
 import database
 import random
+import sys
+import base64
+from pathlib import Path
+# 将agents文件夹添加到Python路径（确保能导入）
+sys.path.append(str(Path(__file__).parent / "agents"))
+from agents.utils import get_all_workflow_names
+from agents.master_agent import master_agent_node
+from agents.knowledge_agent import knowledge_agent_node
+from agents.workflow_agent import workflow_selector_node
+from agents.prompt_agent import prompt_agent_node
+
 
 # --- 1. 初始化与配置 ---
 
@@ -25,7 +36,7 @@ app = Flask(__name__, template_folder='templates')
 CORS(app)
 
 # --- 模式开关 ----
-APP_MODE = os.getenv('APP_MODE', 'local') 
+APP_MODE = os.getenv('APP_MODE', 'server') 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 print(f"--- 应用程序正在以 {APP_MODE.upper()} 模式运行 ---")
 
@@ -295,7 +306,65 @@ def view_file():
     rv.headers.add("X-Content-Type-Options", "nosniff")
     return rv
 
+# 和agents通信
+@app.route('/api/agents/process', methods=['POST'])
+def process_agent_request():
+    try:
+        # 1. 获取前端传递的参数
+        data = request.get_json()
+        user_input = data.get('user_input', '')
+        node_id = data.get('node_id', '')
+        image_url = data.get('image_url', '')
+        workflow_context = data.get('workflow_context', {})
+        
+        parsed_url = urllib.parse.urlparse(image_url)
+        query_params = urllib.parse.parse_qs(parsed_url.query)
+        filename = query_params.get('filename', [None])[0]  # 提取filename参数
 
+        local_dir = "/home/zhengzy/comfyui/comfyui/input"
+        image_url = os.path.join(local_dir, filename)
+        with open(image_url, "rb") as f:
+            image_url = base64.b64encode(f.read()).decode("utf-8")
+            
+        # 2. 准备agent所需的状态
+        mock_state = {
+            "user_input": user_input,
+            "intent": user_input,
+            "image_data": image_url,  # 传给master_agent的图片数据（URL格式）
+            "workflow_list": get_all_workflow_names(),
+            "parent_workflow": workflow_context.get('current_workflow'),
+            "selected_workflow": None
+        }
+
+        # --- 2. Run Master Agent ---
+        state_after_master = master_agent_node(mock_state)
+        # Merge state
+        current_state = {**mock_state, **state_after_master}
+
+        # --- 3. Run Knowledge Agent (Parallel with Master usually, but here serial) ---
+        state_after_knowledge = knowledge_agent_node(current_state)
+        current_state.update(state_after_knowledge)
+
+        # --- 4. Run Workflow Agent (User clicks + button) ---
+        state_after_workflow = workflow_selector_node(current_state)
+        current_state.update(state_after_workflow)
+
+        # --- 5. Run Prompt Agent ---
+        state_after_prompt = prompt_agent_node(current_state)
+        current_state.update(state_after_prompt)
+
+
+        # 4. 返回处理结果给前端
+        return jsonify({
+            "status": "success",
+            "selected_workflow": current_state.get('selected_workflow'),
+            "workflow_title": current_state.get('workflow_title'),
+            "message": current_state.get('final_prompt')
+        })
+
+    except Exception as e:
+        print(f"Agent处理出错: {e}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/assets/upload', methods=['POST'])
 def upload_asset():
@@ -546,7 +615,24 @@ def create_node():
             # 返回更新后的树
             updated_tree = database.get_tree_as_json(tree_id)
             return jsonify(updated_tree), 201
-        
+
+        if final_module_id == 'AddWorkflow':
+            print(">>> 检测到 AddWorkflow 模块，仅保存文本节点到数据库。")
+            # "AddWorkflow" 模块没有 ComfyUI 操作，它只保存节点
+            new_node_id = database.add_node(
+                tree_id=tree_id,
+                parent_ids=parent_ids,
+                module_id=final_module_id,
+                parameters=parameters,
+                assets={}, # 没有媒体资源
+                status='completed'
+            )
+            if not new_node_id:
+                raise Exception("保存 AddWorkflow 节点到数据库失败。")
+
+            # 返回更新后的树
+            updated_tree = database.get_tree_as_json(tree_id)
+            return jsonify(updated_tree), 201
         # 情况3: Mask 输入 (最高优先级判断)
         if 'mask_filename' in parameters:
             print(">>> 检测到 Mask 输入，加载 Inpainting 工作流...")

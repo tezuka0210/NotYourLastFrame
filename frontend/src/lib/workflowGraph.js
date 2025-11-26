@@ -134,6 +134,7 @@ function inferCardType(node) {
   if (node.module_id === 'Init') return 'init'
   if (node.module_id === 'AddText') return 'textFull'
   if (node.module_id === 'TextImage') return 'TextImage'
+  if (node.module_id === 'AddWorkflow') return 'AddWorkflow'
   if (node.module_id === 'TextToAudio' || isAudioMedia || (node.media && node.media.type === 'audio')) return 'audio'
   return 'io'
 }
@@ -152,6 +153,58 @@ export function updateSelectionStyles(svgElement, selectedIds) {
         card.style('box-shadow', 'none')
       }
     })
+}
+
+/**
+ * 为卡片创建右键菜单（包含"生成Workflow"选项）
+ * @param {d3.Selection} card - 卡片DOM选择器
+ * @param {Object} d - 节点数据
+ * @param {Function} emit - 事件发射器
+ */
+function addRightClickMenu(card, d, emit) {
+  card.on('contextmenu', (ev) => {
+    ev.preventDefault(); // 阻止默认右键菜单
+    ev.stopPropagation();
+
+    // 创建菜单容器
+    const menu = d3.select('body').append('xhtml:div')
+      .style('position', 'absolute')
+      .style('left', `${ev.pageX}px`)
+      .style('top', `${ev.pageY}px`)
+      .style('background', 'white')
+      .style('border', '1px solid #e5e7eb')
+      .style('border-radius', '4px')
+      .style('padding', '4px 0')
+      .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
+      .style('z-index', '1000')
+      .style('min-width', '140px');
+
+    // 添加"生成Workflow"选项
+    menu.append('xhtml:div')
+      .style('padding', '4px 12px')
+      .style('cursor', 'pointer')
+      .style('font-size', '12px')
+      .style('color', '#374151')
+      .style('display', 'flex')
+      .style('align-items', 'center')
+      .style('gap', '6px')
+      .on('mouseenter', function() { d3.select(this).style('background', '#f3f4f6'); })
+      .on('mouseleave', function() { d3.select(this).style('background', 'transparent'); })
+      .html(`
+        <span>Add Workflow</span>
+      `)
+      .on('click', () => {
+        emit('create-card', d,'AddWorkflow', 'util'); // 触发创建事件
+        menu.remove();
+      });
+
+    // 点击其他区域关闭菜单
+    const closeMenu = () => {
+      menu.remove();
+      document.removeEventListener('click', closeMenu);
+    };
+    setTimeout(() => document.addEventListener('click', closeMenu), 0);
+  });
 }
 
 /** 仅更新可见性（折叠/展开），不改变缩放与布局 */
@@ -223,7 +276,7 @@ export function renderTree(
     if (isInit) {
       width = 60
       height = 60
-    } else if (cardType === 'textFull') {
+    } else if (cardType === 'textFull'|| 'AddWorkflow') {
       width = 260
       height = 140
     } else if (cardType === 'TextImage') {
@@ -661,6 +714,8 @@ title.on('dblclick', (ev) => {
       .on('mouseleave', () => card.selectAll('.dots-container').style('opacity', '0'))
 
     buildHeader(card, d)
+    addRightClickMenu(card, d, emit);
+
 
     const body = card.append('xhtml:div')
       .style('flex', '1 1 auto')
@@ -885,7 +940,7 @@ title.on('dblclick', (ev) => {
       .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
 
     buildHeader(card, d)
-
+    addRightClickMenu(card, d, emit);
     // --- 核心布局：左右分栏 ---
     const body = card.append('xhtml:div')
       .style('flex', '1 1 auto')
@@ -1003,14 +1058,68 @@ title.on('dblclick', (ev) => {
       fileInput.node().click()
     })
     
-    // ... (添加 addTooltip 等) ...
-    const toolbar = body.append('xhtml:div')
+    const toolbar = card.append('xhtml:div')
       .style('flex-shrink', '0')
       .style('padding', '4px 6px')
       .style('display', 'flex')
       .style('justify-content', 'flex-end')
       .style('gap', '4px')
 
+
+    // Agent button
+    const AgentBtn = toolbar.append('xhtml:button')
+      .text('A')
+      .style('width', '18px')
+      .style('height', '18px')
+      .style('border-radius', '999px')
+      .style('border', '1px solid #e5e7eb')
+      .style('background', '#ffffff')
+      .style('font-size', '12px')
+      .style('line-height', '1')
+      .style('display', 'inline-flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('color', '#6b7280')
+      .style('cursor', 'pointer')
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('click', (ev) => {
+        ev.stopPropagation();
+        // 收集需要传递的内容（例如节点参数、用户输入等）
+        const payload = {
+          user_input: d.parameters?.positive_prompt || d.parameters?.text || '', // 节点文本内容
+          node_id: d.id, // 当前节点ID
+          image_url: d.media?.url || '', // 补充图片URL（从节点媒体信息中获取）
+          workflow_context: {
+            current_workflow: d.module_id, // 当前使用的工作流
+            parent_nodes: d.originalParents || [] // 父节点信息
+          }
+        };
+        // 发送请求到后端agent接口
+        fetch('/api/agents/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+          console.log('Agent处理结果:', data);
+          // 处理返回结果（例如更新节点、提示用户等）
+          alert(`AI助手推荐工作流: ${data.selected_workflow}`);
+        })
+        .catch(err => console.error('调用Agent失败:', err));
+      })
+      .on('mouseenter', function () {
+        d3.select(this)
+          .style('background', '#6b7280')
+          .style('color', '#ffffff')
+          .style('border-color', '#4b5563')
+      })
+      .on('mouseleave', function () {
+        d3.select(this)
+          .style('background', '#ffffff')
+          .style('color', '#6b7280')
+          .style('border-color', '#e5e7eb')
+      })
     addTooltip(gEl, d)
   }
 
@@ -1067,7 +1176,7 @@ title.on('dblclick', (ev) => {
       .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
 
     buildHeader(card, d)
-
+    addRightClickMenu(card, d, emit);
     const body = card.append('xhtml:div')
       .style('flex', '1 1 auto')
       .style('min-height', '0')
@@ -1298,7 +1407,7 @@ title.on('dblclick', (ev) => {
     } else {
       card.style('box-shadow', 'none')
     }
-
+    addRightClickMenu(card, d, emit);
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
       ev.stopPropagation()
@@ -1607,64 +1716,6 @@ title.on('dblclick', (ev) => {
     })
   }
 
-  // if (hasMedia) {
-  //   // 遍历我们刚刚创建的统一媒体列表
-  //   allMediaItems.forEach((mediaItem, index) => {
-  //     // 为每个媒体项创建一个容器，用于控制间距
-  //     const mediaContainer = right.append('xhtml:div')
-  //       .style('width', '100%')
-  //       .style('margin-bottom', '4px') // 媒体项之间的下边距
-  //       .style('display', 'flex')
-  //       .style('justify-content', 'center');
-
-  //     if (mediaItem.type === 'image') {
-  //       // 如果是图片，渲染 <img> 标签
-  //       console.log("img img img img img img")
-  //       mediaContainer.append('xhtml:img')
-  //         .style('width', 'auto')
-  //         .style('max-width', '100%') // 最大宽度不超过容器
-  //         .style('height', '100px')   // 固定高度，便于统一布局
-  //         .style('object-fit', 'contain') // 保持宽高比
-  //         .attr('src', mediaItem.url)
-  //         .attr('alt', `Output image ${index + 1}`)
-  //         .on('mousedown', ev => ev.stopPropagation())
-  //         .on('click', ev => {
-  //           ev.stopPropagation();
-  //           emit('open-preview', mediaItem.url, 'image');
-  //         });
-  //     } else if (mediaItem.type === 'video') {
-  //       // 如果是视频，渲染 <video> 标签
-  //       console.log("video video video video video")
-  //       const videoElement = mediaContainer.append('xhtml:video')
-  //         .style('width', 'auto')
-  //         .style('max-width', '100%') // 最大宽度不超过容器
-  //         .style('height', '100px')   // 固定高度
-  //         .attr('controls', true)     // 显示播放控制条
-  //         .attr('loop', true)         // 可选：设置为循环播放
-  //         .attr('muted', true)        // 可选：默认静音，避免突然播放声音
-  //         .attr('preload', 'metadata')// 预加载元数据（如时长、尺寸）
-  //         .on('mousedown', ev => ev.stopPropagation())
-  //         .on('click', ev => {
-  //           ev.stopPropagation();
-  //           // 点击视频时也触发预览
-  //           emit('open-preview', mediaItem.url, 'video');
-  //         });
-
-  //       // 为 <video> 标签添加 <source>
-  //       videoElement.append('xhtml:source')
-  //         .attr('src', mediaItem.url)
-  //         .attr('type', 'video/mp4'); // 假设视频都是 mp4 格式
-  //     }
-  //   });
-  // } else {
-  //   // 如果没有任何媒体，显示占位文本
-  //   right.append('xhtml:div')
-  //     .style('font-size', '11px')
-  //     .style('color', '#9ca3af')
-  //     .style('user-select', 'none')
-  //     .style('padding', '10px 0') // 增加内边距，让占位符更美观
-  //     .text('(No output yet)');
-  // }
 
     const dots = right.append('xhtml:div')
       .attr('class', 'dots-container')
@@ -1736,6 +1787,233 @@ title.on('dblclick', (ev) => {
         })
     }
 
+    addTooltip(gEl, d)
+  }
+
+  // 实现AddWorkflow卡片渲染（复用TextFull布局，替换图标）
+function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
+    const fo = gEl.append('foreignObject')
+      .attr('width', d.calculatedWidth)
+      .attr('height', d.calculatedHeight)
+      .attr('x', -d.calculatedWidth / 2)
+      .attr('y', -d.calculatedHeight / 2)
+      .style('overflow', 'visible')
+
+    const card = fo.append('xhtml:div')
+      .attr('class', 'node-card')
+      .style('width', '100%')
+      .style('height', '100%')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+      .style('border-width', '2px')
+      .style('border-radius', '8px')
+      .style('border-color', getNodeBorderColor(d))
+      .style('position', 'relative')
+      .style('cursor', 'pointer')
+      .style('background-color', '#ffffff')
+      .style('user-select', 'none')
+      .style('-webkit-user-select', 'none')
+
+    if (selectedIds.includes(d.id)) {
+      const selColor = getSelectionColor(d)
+      card.style('box-shadow', `0 0 0 2px ${selColor}`)
+    } else {
+      card.style('box-shadow', 'none')
+    }
+
+    card.on('click', ev => {
+      if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
+      ev.stopPropagation()
+      const selected = new Set(selectedIds)
+      const on = selected.has(d.id)
+      if (on) selected.delete(d.id)
+      else if (selected.size < 2) selected.add(d.id)
+      const selColor = getSelectionColor(d)
+      card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
+      emit('update:selectedIds', Array.from(selected))
+    })
+
+    card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
+      .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
+
+    buildHeader(card, d)
+    addRightClickMenu(card, d, emit);
+    // --- 核心布局：左右分栏 ---
+    const body = card.append('xhtml:div')
+      .style('flex', '1 1 auto')
+      .style('min-height', '0')
+      .style('display', 'flex')
+      .style('flex-direction', 'row') // 左右排列
+
+    // === 左侧：纯文本编辑器 ===
+    const left = body.append('xhtml:div')
+      .style('flex', '1') // 占据 50%
+      .style('min-width', '0')
+      .style('border-right', '1px solid #e5e7eb')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+
+    // 这里复用你之前改好的 textarea 逻辑
+    const promptText = d.parameters?.text || d.parameters?.positive_prompt || ''
+    const textArea = left.append('xhtml:textarea')
+        .attr('class', 'thin-scroll')
+        .style('flex', '1').style('width', '100%').style('padding', '6px')
+        .style('font-size', '10px').style('color', '#374151')
+        .style('border', 'none').style('resize', 'none').style('outline', 'none')
+        .style('background', 'transparent')
+        .property('value', promptText)
+        .on('mousedown', ev => ev.stopPropagation())
+        
+        .on('blur', function() {
+            const newVal = d3.select(this).property('value')
+            if (newVal !== promptText) {
+              if (!d.parameters) d.parameters = {}
+              d.parameters.text = newVal
+              emit('update-node-parameters', d.id, d.parameters)
+            }
+        })
+
+    // === 右侧：媒体显示区 ===
+    const right = body.append('xhtml:div')
+      .style('flex', '1 1 0')
+      .style('min-width', '0')
+      .style('padding', '2px 4px')
+      .style('display', 'flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('position', 'relative')
+      .style('overflow', 'hidden')
+
+    // 判断是否有媒体内容
+    const hasMedia = !!(d.media && d.media.rawPath)
+    const mediaUrl = hasMedia ? d.media.url : ''
+
+    // 创建上传容器（居中显示）
+    const uploadContainer = right.append('xhtml:div')
+      .style('width', '80%')
+      .style('height', '80%')
+      .style('display', 'flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('border', hasMedia ? 'none' : '2px dashed #d1d5db') // 无媒体时显示虚线边框
+      .style('border-radius', '4px')
+      .style('cursor', 'pointer')
+      .style('transition', 'border-color 0.2s')
+      .on('mouseenter', function() {
+        if (!hasMedia) d3.select(this).style('border-color', '#9ca3af')
+      })
+      .on('mouseleave', function() {
+        if (!hasMedia) d3.select(this).style('border-color', '#d1d5db')
+      })
+
+    // 如果有媒体，显示媒体内容
+    if (hasMedia) {
+      uploadContainer.append('xhtml:img')
+        .attr('src', mediaUrl)
+        .style('max-width', '100%')
+        .style('max-height', '100%')
+        .style('object-fit', 'contain') // 保持比例缩放
+    } else {
+      // 无媒体时显示加号和提示文字
+      const uploadContent = uploadContainer.append('xhtml:div')
+        .style('text-align', 'center')
+        .style('color', '#6b7280')
+
+      // 加号图标（使用大号字体模拟）
+      uploadContent.append('xhtml:div')
+        .style('font-size', '24px')
+        .style('line-height', '1')
+        .style('margin-bottom', '4px')
+        .text('+')
+
+      
+    }
+
+    // 添加实际的文件上传输入（隐藏但保持功能）
+    const fileInput = uploadContainer.append('xhtml:input')
+      .attr('type', 'file')
+      .attr('accept', 'image/*')
+      .style('position', 'absolute')
+      .style('top', '0')
+      .style('left', '0')
+      .style('width', '100%')
+      .style('height', '100%')
+      .style('opacity', '0')
+      .style('cursor', 'pointer')
+      .on('change', function() {
+        const file = this.files?.[0]
+        if (file) {
+          emit('upload-media', d.id, file)
+          this.value = ''
+        }
+      })
+
+    // 点击容器时触发文件输入的点击事件
+    uploadContainer.on('click', () => {
+      fileInput.node().click()
+    })
+    
+    const toolbar = card.append('xhtml:div')
+      .style('flex-shrink', '0')
+      .style('padding', '4px 6px')
+      .style('display', 'flex')
+      .style('justify-content', 'flex-end')
+      .style('gap', '4px')
+
+
+    // Agent button
+    const AgentBtn = toolbar.append('xhtml:button')
+      .text('A')
+      .style('width', '18px')
+      .style('height', '18px')
+      .style('border-radius', '999px')
+      .style('border', '1px solid #e5e7eb')
+      .style('background', '#ffffff')
+      .style('font-size', '12px')
+      .style('line-height', '1')
+      .style('display', 'inline-flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('color', '#6b7280')
+      .style('cursor', 'pointer')
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('click', (ev) => {
+        ev.stopPropagation();
+        // 收集需要传递的内容（例如节点参数、用户输入等）
+        const payload = {
+          user_input: d.parameters?.positive_prompt || d.parameters?.text || '', // 节点文本内容
+          node_id: d.id, // 当前节点ID
+          workflow_context: {
+            current_workflow: d.module_id, // 当前使用的工作流
+            parent_nodes: d.originalParents || [] // 父节点信息
+          }
+        };
+        // 发送请求到后端agent接口
+        fetch('/api/agents/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+          console.log('Agent处理结果:', data);
+          // 处理返回结果（例如更新节点、提示用户等）
+          alert(`AI助手推荐工作流: ${data.selected_workflow}`);
+        })
+        .catch(err => console.error('调用Agent失败:', err));
+      })
+      .on('mouseenter', function () {
+        d3.select(this)
+          .style('background', '#6b7280')
+          .style('color', '#ffffff')
+          .style('border-color', '#4b5563')
+      })
+      .on('mouseleave', function () {
+        d3.select(this)
+          .style('background', '#ffffff')
+          .style('color', '#6b7280')
+          .style('border-color', '#e5e7eb')
+      })
     addTooltip(gEl, d)
   }
 
@@ -1811,7 +2089,9 @@ title.on('dblclick', (ev) => {
     } else if (cardType == 'TextImage'){
       console.log(`render TextImage`)
       renderTextImageNode(gEl, d, selectedIds, emit)
-    } else {
+    } else if (cardType == 'AddWorkflow'){
+      renderAddWorkflowNode(gEl, d, selectedIds, emit)
+    }else {
       renderIONode(gEl, d, selectedIds, emit, workflowTypes)
     }
   })

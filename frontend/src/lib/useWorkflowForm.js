@@ -3,6 +3,7 @@ import { ref, reactive, computed, watch } from 'vue'
 /* 全部模块 */
 const allModules = [
   { id: 'AddText',name:'Text',type:'util'},
+  { id: 'AddWorkflow',name:'AddWorkflow',type:'util'},
   { id: 'ImageCanny', name: 'ImageCanny', type: 'preprocess' },
   { id: 'RemoveBackground', name: 'RemoveBackground', type: 'preprocess' },
   { id: 'ImageMerging', name: 'ImageMerging', type: 'preprocess' },
@@ -22,6 +23,9 @@ const allModules = [
 /* 各模块参数定义 */
 const workflowParameters = {
   AddText: [
+    { id: 'text', label: 'Text', type: 'textarea', defaultValue: '' },
+  ],
+  AddWorkflow: [
     { id: 'text', label: 'Text', type: 'textarea', defaultValue: '' },
   ],
   TextToAudio: [
