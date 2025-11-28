@@ -533,10 +533,48 @@ def create_node():
     if APP_MODE == 'local':
         print(">>> 处于本地模式：模拟生成。")
         data = request.get_json()
+        print(data)
         tree_id = data.get('tree_id')
+        node_id = data.get('node_id')
         parent_ids = data.get('parent_ids', [])
         module_id_from_frontend = data.get('module_id')
+        node_title = data.get('title')
         parameters = data.get('parameters', {})
+        if module_id_from_frontend == 'AddText':
+            print(">>> 检测到 AddText 模块，仅保存文本节点到数据库。")
+            # "AddText" 模块没有 ComfyUI 操作，它只保存节点
+            new_node_id = database.add_node(
+                node_id=node_id,
+                tree_id=tree_id,
+                parent_ids=parent_ids,
+                module_id=module_id_from_frontend,
+                parameters=parameters,
+                title='AddText',
+                assets={}, # 没有媒体资源
+                status='completed'
+            )
+            if not new_node_id:
+                raise Exception("保存 AddText 节点到数据库失败。")
+
+            # 返回更新后的树
+            updated_tree = database.get_tree_as_json(tree_id)
+            return jsonify(updated_tree), 201
+
+        if module_id_from_frontend == 'AddWorkflow':
+            print(">>> 检测到 AddWorkflow 模块，仅保存文本节点到数据库。")
+            # "AddWorkflow" 模块没有 ComfyUI 操作，它只保存节点
+            new_node_id = database.add_node(
+                node_id=node_id,
+                tree_id=tree_id,
+                parent_ids=parent_ids,
+                module_id=module_id_from_frontend,
+                parameters=parameters,
+                title='AddWorkflow',
+                assets={}, # 没有媒体资源
+                status='completed'
+            )
+            if not new_node_id:
+                raise Exception("保存 AddWorkflow 节点到数据库失败。")
 
         try:
             # 尝试从 output/video 或 output 随机选择一个文件
@@ -587,14 +625,15 @@ def create_node():
                 outputs["output"]["images"].append(asset_url)
 
             # 像真实生成一样，将节点添加到数据库
-            new_node_id = database.add_node(
-                tree_id=tree_id,
-                parent_ids=parent_ids,
-                module_id=module_id_from_frontend,
-                parameters=parameters,
-                assets=outputs,
-                title=module_id_from_frontend,
-                status='completed'
+            database.update_node(
+                node_id=node_id,
+                payload={
+                        "title": node_title,
+                        "module_id": module_id_from_frontend,
+                        "assets": outputs,
+                        "parameters": parameters,
+                        "status":'completed'
+                    }
             )
             if not new_node_id:
                 raise Exception("模拟节点执行成功但保存到数据库失败。")
