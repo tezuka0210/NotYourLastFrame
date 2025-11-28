@@ -180,20 +180,20 @@ const createCard = async (parentNode: AppNode, moduleId: string) => {
   selectedParentIds.value = []; 
 }
 
-const handleRefreshNode = (nodeId: string, newModuleId: string) => {
+const handleRefreshNode = (nodeId: string, newModuleId: string, updatedParams: Record<string, any>) => {
   // 找到需要刷新的节点并修改其数据（触发响应式更新）
   allNodes.value = allNodes.value.map(node => {
     if (node.id === nodeId) {
-      // 关键：替换 module_id 并返回新对象（触发响应式式）
+      // 同时更新模块ID和参数
       return {
         ...node,
-        module_id: newModuleId // 应用新的模块类型
+        module_id: newModuleId,       // 更新模块类型
+        parameters: updatedParams  // 更新参数
       };
     }
     return node;
   });
 };
-
 
 
 const isGenerationPopoverOpen = ref(false)

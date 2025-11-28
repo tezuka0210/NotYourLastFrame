@@ -7,7 +7,7 @@ def master_agent_node(state: AgentState):
     print("--- Running Master Agent ---")
 
     image_data = state.get("image_data", None)
-    print(image_data)
+    print(state.get("user_input",None))
 
     # 1. Initialize LLM (GPT-4o is required for Image Vision)
     llm = ChatOpenAI(
@@ -56,7 +56,7 @@ def master_agent_node(state: AgentState):
     except json.JSONDecodeError:
         print("❌ Master Agent: JSON Parse Error")
         parsed_data = {
-            "intent": user_input,
+            "intent": state["user_input"],
             "entities": [],
             "style": "General",
             "image_caption": ""

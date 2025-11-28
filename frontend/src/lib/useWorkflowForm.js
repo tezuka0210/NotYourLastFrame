@@ -21,7 +21,7 @@ const allModules = [
 ]
 
 /* 各模块参数定义 */
-const workflowParameters = {
+export const workflowParameters = {
   AddText: [
     { id: 'text', label: 'Text', type: 'textarea', defaultValue: '' },
   ],
@@ -55,8 +55,16 @@ const workflowParameters = {
     { id: 'height', label: 'height', type: 'number', defaultValue: 512 },
     { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 }
   ],
-  ImageGenerateImage: [
-    { id: 'lora_selector', label: 'LORA', type: 'select', options: ['None', 'Canny'], defaultValue: 'None' },
+  ImageGenerateImage_Basic: [
+    { id: 'positive_prompt', label: 'Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your creative prompt...' },
+    { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
+    { id: 'steps', label: 'Steps', type: 'number', defaultValue: 20 },
+    { id: 'guidance', label: 'Guidance', type: 'number', defaultValue: 7.5, step: 0.1 },
+    { id: 'width', label: 'width', type: 'number', defaultValue: 1024 },
+    { id: 'height', label: 'height', type: 'number', defaultValue: 512 },
+    { id: 'batch_size', label: 'batch_size', type: 'number', defaultValue: 1 }
+  ],
+  ImageGenerateImage_Canny: [
     { id: 'positive_prompt', label: 'Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your creative prompt...' },
     { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'steps', label: 'Steps', type: 'number', defaultValue: 20 },
@@ -159,11 +167,13 @@ export function useWorkflowForm (props) {
     if (newId && newId !== oldId) resetParameterValues(newId)
   }, { immediate: true })
 
+  
   return {
     moduleId,
     parameterValues,
     availableModules,
     currentParameters,
-    resetParameterValues
+    resetParameterValues,
+    workflowParameters
   }
 }

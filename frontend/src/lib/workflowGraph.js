@@ -3,6 +3,8 @@ import * as d3 from 'd3'
 import * as dagre from 'dagre'
 import WaveSurfer from 'wavesurfer.js'
 
+import { workflowParameters } from '@/lib/useWorkflowForm.js';
+
 // --- link color: light gray for all edges ---
 const defaultLinkColor = '#D1D5DB' // gray-300
 
@@ -776,40 +778,6 @@ title.on('dblclick', (ev) => {
       .style('justify-content', 'flex-end')
       .style('gap', '4px')
 
-    // Collapse button
-    /*const collapseBtn = toolbar.append('xhtml:button')
-      .attr('class', 'collapse-btn')
-      .text(d._collapsed ? '+' : '-')
-      .style('width', '18px')
-      .style('height', '18px')
-      .style('border-radius', '999px')
-      .style('border', '1px solid #e5e7eb')
-      .style('background', '#ffffff')
-      .style('font-size', '12px')
-      .style('line-height', '1')
-      .style('display', 'inline-flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('color', d._collapsed ? '#E4080A' : '#6b7280') // gray-500
-      .style('cursor', 'pointer')
-      .on('mousedown', ev => ev.stopPropagation())
-      .on('click', ev => {
-        ev.stopPropagation()
-        emit('toggle-collapse', d.id)
-      })
-      .on('mouseenter', function () {
-        d3.select(this)
-          .style('background', '#6b7280')   // gray-500
-          .style('color', '#ffffff')
-          .style('border-color', '#4b5563') // gray-600
-      })
-      .on('mouseleave', function () {
-        d3.select(this)
-          .style('background', '#ffffff')
-          .style('color', d._collapsed ? '#E4080A' : '#6b7280')
-          .style('border-color', '#e5e7eb')
-      })*/
-
 
     // Image button
     const ImgBtn = toolbar.append('xhtml:button')
@@ -1107,18 +1075,75 @@ title.on('dblclick', (ev) => {
           }
         };
         // 发送请求到后端agent接口
-        fetch('/api/agents/process', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
-        .then(res => res.json())
-        .then(data => {
-          console.log('Agent处理结果:', data);
+        // fetch('/api/agents/process', {
+        //   method: 'POST',
+        //   headers: { 'Content-Type': 'application/json' },
+        //   body: JSON.stringify(payload)
+        // })
+        // .then(res => res.json())
+        // .then(data => {
+        //   console.log('Agent处理结果:', data);
+        //   // 处理返回结果（例如更新节点、提示用户等）
+        //   const rawWorkflowId = data.selected_workflow || '';
+        //   const workflowId = rawWorkflowId.replace(".json", ''); // 正则匹配并移除末尾的 .json
+        //   import('@/lib/useWorkflowForm.js').then(({ workflowParameters }) => {
+        //     if (!workflowParameters) {
+        //       console.error('workflowParameters 未正确导入');
+        //       return;
+        //     }
+        //     // 2. 获取对应工作流的默认参数
+        //     const defaultParams = workflowParameters[workflowId] || {};
+            
+        //     // 3. 整合参数（agent返回的prompt覆盖默认值）
+        //     const updatedParams = {
+        //       ...defaultParams,
+        //       prompt: data.prompt || defaultParams.prompt || '' // 确保prompt字段存在
+        //     };
+        const data = {
+            status: "success",
+            selected_workflow: "ImageGenerateImage_Basic.json",
+            workflow_title: "Image Modification",
+            message: {
+              negative: 'blurry details, dark shadows, distorted proportion… unnatural lighting, harsh edges, excessive noise',
+              positive: 'A golden retriever joyfully playing with a vibrant…(dynamic composition:1.1), (natural lighting:1.1)'
+            }
+          };
+        console.log('Agent处理结果:', data);
           // 处理返回结果（例如更新节点、提示用户等）
-          alert(`AI助手推荐工作流: ${data.selected_workflow}`);
-        })
-        .catch(err => console.error('调用Agent失败:', err));
+          const rawWorkflowId = data.selected_workflow || '';
+          const workflowId = rawWorkflowId.replace(".json", ''); // 移除末尾的 .json
+          import('@/lib/useWorkflowForm.js').then(({ workflowParameters }) => {
+          if (!workflowParameters) {
+            console.error('workflowParameters 未正确导入');
+            return;
+          }
+
+          // 1. 获取对应工作流的参数定义数组（如 [{id: 'positive_prompt', ...}, ...]）
+          const paramDefinitions = workflowParameters[workflowId] || [];
+          
+          // 2. 将参数定义数组转换为 { id: defaultValue } 格式的对象
+          const defaultParams = paramDefinitions.reduce((obj, param) => {
+            obj[param.id] = param.defaultValue; // 以参数id为键，默认值为值
+            return obj;
+          }, {});
+          
+          // 3. 整合参数（agent返回的prompt覆盖默认值）
+          const updatedParams = {
+            ...defaultParams, // 基础默认参数
+            positive_prompt: data.message.positive || defaultParams.positive_prompt || '', // 优先使用agent返回的positive
+            negative_prompt: data.message.negative || defaultParams.negative_prompt || '' // 优先使用agent返回的negative
+          };
+          console.log('转换后的参数格式:', updatedParams);
+
+
+          // 4. 更新节点参数并触发刷新
+          d.parameters = updatedParams;
+          // 5. 调用App.vue的handleRefreshNode刷新节点
+          emit('refresh-node', d.id, workflowId, d.parameters);
+          });
+        //})
+        
+        //.catch(err => console.error('调用Agent失败:', err));
       })
       .on('mouseenter', function () {
         d3.select(this)
@@ -1521,6 +1546,7 @@ title.on('dblclick', (ev) => {
             if (el.attr('type') === 'number') val = Number(val)
             if (key) currentParams[key] = val
         })
+        console.log('currentParams:', currentParams);
         emit('regenerate-node', d, currentParams)
       })
 
