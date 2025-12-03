@@ -507,6 +507,7 @@ def upload_asset():
             else:
                 updated_assets['input']['images'] = updated_assets['input'].get('images', []) + [asset_url]
 
+        print(updated_assets)
         # 7. 更新数据库
         database.update_node(
             node_id=target_node_id,
@@ -551,7 +552,7 @@ def update_node_media(node_id):
             return jsonify({"error": "请求体不能为空"}), 400
 
         # 调用 update_node 函数更新节点
-        update_node(node_id, data)
+        database.update_node(node_id, data)
 
         # 获取更新后的树
         tree_data = get_tree_as_json(database.get_node(node_id)['tree_id'])
@@ -922,12 +923,16 @@ def create_node():
     
         # PROMPT
         prompt_positive_node_id = find_node_id_by_title(workflow, "CLIP Text Encode (Positive Prompt)")
-        if prompt_positive_node_id and 'positive_prompt' in parameters:
-            workflow[prompt_positive_node_id]["inputs"]["text"] = parameters['positive_prompt']
-        
+        if prompt_positive_node_id:
+            # 优先使用 optimized_positive_prompt（前端传递的完整 prompt），没有则用原始 prompt
+            positive_prompt = parameters.get('optimized_positive_prompt', parameters.get('positive_prompt', ''))
+            workflow[prompt_positive_node_id]["inputs"]["text"] = positive_prompt
+
         prompt_negative_node_id = find_node_id_by_title(workflow, "CLIP Text Encode (Negative Prompt)")
-        if prompt_negative_node_id and 'negative_prompt' in parameters:
-            workflow[prompt_negative_node_id]["inputs"]["text"] = parameters['negative_prompt']
+        if prompt_negative_node_id:
+            # 同理：用 optimized_negative_prompt 执行生成
+            negative_prompt = parameters.get('optimized_negative_prompt', parameters.get('negative_prompt', ''))
+            workflow[prompt_negative_node_id]["inputs"]["text"] = negative_prompt
 
         # WIDTH HEIGHT LENGTH BATCH_SIZE SPEED CAMERA
         size_node_id = find_node_id_by_title(workflow, "Size_Setting")
@@ -1051,13 +1056,14 @@ def create_node():
     if not node_data:
         print(f"节点 {node_id} 不存在于数据库中")
         return []
-    assets = node_data.get('assets', {})
-    input_assets = assets.get('input', {})
-    images_urls = input_assets.get('images', [])
-    
+
+    # 1. 原样获取节点已有的 assets（包括 input 所有内容，不做任何修改）
+    existing_assets = node_data.get('assets', {})
+
+    # 2. 构建新的 assets：保留原有所有内容，仅新增/更新 output 字段
     assets_with_output = {
-        "input":images_urls,
-        "output": outputs
+        **existing_assets,  # 解构原有 assets（原样保留 input 及其他所有字段）
+        "output": outputs   # 新增/覆盖 output 字段（生成结果）
     }
 
 

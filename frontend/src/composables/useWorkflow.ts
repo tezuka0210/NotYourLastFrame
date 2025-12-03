@@ -360,6 +360,7 @@ function toggleNodeCollapse(nodeId: string) {
           // 不要手动设置Content-Type，浏览器会自动添加正确的multipart/form-data类型及边界
         }
       );
+      console.log(`formdata:${formData}`);
       if (!uploadResponse.ok) {
         const errText = await uploadResponse.text();
         throw new Error(`文件上传失败: ${errText}`);
@@ -382,6 +383,7 @@ function toggleNodeCollapse(nodeId: string) {
           parameters: allNodes.value.find(n => n.id === nodeId)?.parameters
         })
       });
+      console.log(`assets:${targetNode.assets}`);
 
       if (!updateResponse.ok) {
         const errText = await updateResponse.text();
@@ -485,8 +487,8 @@ function toggleNodeCollapse(nodeId: string) {
           module_id: moduleId,    // 要执行的模块
           parameters: {
             ...parameters,
-            positive_prompt: optimizedPrompt.positive,
-            negative_prompt: optimizedPrompt.negative,
+            optimized_positive_prompt: optimizedPrompt.positive,
+            optimized_negative_prompt: optimizedPrompt.negative,
           }
         };
 
