@@ -776,7 +776,7 @@ title.on('dblclick', (ev) => {
 
     const toolbar = body.append('xhtml:div')
       .style('flex-shrink', '0')
-      .style('padding', '4px 6px')
+      .style('padding', '4px 2px')
       .style('display', 'flex')
       .style('justify-content', 'flex-end')
       .style('gap', '4px')
@@ -1018,7 +1018,7 @@ title.on('dblclick', (ev) => {
     
     const toolbar = card.append('xhtml:div')
       .style('flex-shrink', '0')
-      .style('padding', '4px 6px')
+      .style('padding', '4px 2px')
       .style('display', 'flex')
       .style('justify-content', 'flex-end')
       .style('gap', '4px')
@@ -1186,7 +1186,7 @@ title.on('dblclick', (ev) => {
       .style('min-height', '0')
       .style('display', 'flex')
       .style('flex-direction', 'column')
-      .style('padding', '4px 6px')
+      .style('padding', '4px 2px')
       .style('gap', '4px')
 
     if (promptText && promptText.trim() !== '') {
@@ -1388,202 +1388,121 @@ title.on('dblclick', (ev) => {
     addTooltip(gEl, d)
   }
 
-  /**
+
+/**
  * 左右 IO 卡：左输入，右输出（图片 / 视频 / 文本）
  */
 function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
-  /************ 记得改改改改改改**********/
-  const assets = d.assets.output || {};
+  const assets = d.assets?.output || {};
   const allMedia = assets.images || [];
-  // 获取图片和视频列表，如果不存在则为空数组
-  const videoUrls = allMedia.filter(url => 
-    url.includes('.mp4') || 
-    url.includes('.mov') || 
-    url.includes('.webm') || 
+
+  const videoUrls = allMedia.filter(url =>
+    url.includes('.mp4') ||
+    url.includes('.mov') ||
+    url.includes('.webm') ||
     url.includes('subfolder=video')
   );
-
-  // 筛选出所有图片URL（排除已识别为视频的）
   const imageUrls = allMedia.filter(url => !videoUrls.includes(url));
-  // 判断是否有任何媒体可以显示
-  const hasMedia = !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0)
-  console.log(`renderIONode ${hasMedia}`)
-  const mediaUrl = hasMedia ? d.assets.output.images : ''
-  const rawIVPath = hasMedia ? d.assets.output.images[0] : ''
-  const mediaType = d.assets.output && d.assets.output.type
-  
-  const isVideo =(rawIVPath.includes('.mp4') || rawIVPath.includes('subfolder=video') )
-  console.log(`renderIONode ${rawIVPath}           ${isVideo}`)
-  
-  const isImage = hasMedia && !isVideo && mediaType !== 'audio'
-  const canAddToStitch = hasMedia && (isImage || isVideo)
 
-  const promptText = (d.parameters) ? (d.parameters.positive_prompt || d.parameters.text) : null
-  const hasPrompt = typeof promptText === 'string' && promptText.trim() !== ''
+  const hasMedia = !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0);
+  const rawIVPath = hasMedia ? d.assets.output.images[0] : '';
+
+  const isVideo = rawIVPath.includes('.mp4') || rawIVPath.includes('subfolder=video');
+  const isImage = hasMedia && !isVideo && assets.type !== 'audio';
+  const canAddToStitch = hasMedia && (isImage || isVideo);
+
+  const promptText = d.parameters ? (d.parameters.positive_prompt || d.parameters.text) : null;
+  const hasPrompt = typeof promptText === 'string' && promptText.trim() !== '';
 
   const fo = gEl.append('foreignObject')
     .attr('width', d.calculatedWidth)
     .attr('height', d.calculatedHeight)
     .attr('x', -d.calculatedWidth / 2)
     .attr('y', -d.calculatedHeight / 2)
-    .style('overflow', 'visible')
+    .style('overflow', 'visible');
 
   const card = fo.append('xhtml:div')
     .attr('class', 'node-card')
-    .style('width', '100%')
-    .style('height', '100%')
     .style('display', 'flex')
     .style('flex-direction', 'column')
-    .style('border-width', '2px')
-    .style('border-radius', '8px')
-    .style('border-color', getNodeBorderColor(d))
-    .style('position', 'relative')
+    .style('height', '100%')
     .style('cursor', 'pointer')
-    .style('background-color', '#ffffff')
+    .style('position', 'relative')
     .style('user-select', 'none')
-    .style('-webkit-user-select', 'none')
+    .style('-webkit-user-select', 'none');
 
   if (selectedIds.includes(d.id)) {
-    const selColor = getSelectionColor(d)
-    card.style('box-shadow', `0 0 0 2px ${selColor}`)
-  } else {
-    card.style('box-shadow', 'none')
+    const selColor = getSelectionColor(d);
+    card.style('box-shadow', `0 0 0 2px ${selColor}`);
   }
+
   addRightClickMenu(card, d, emit);
+
   card.on('click', ev => {
-    if (ev.target && ev.target.closest && ev.target.closest('button, img, video, input')) return
-    ev.stopPropagation()
-    const selected = new Set(selectedIds)
-    const on = selected.has(d.id)
-    if (on) selected.delete(d.id)
-    else if (selected.size < 2) selected.add(d.id)
-    const selColor = getSelectionColor(d)
-    card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
-    emit('update:selectedIds', Array.from(selected))
-  })
+    if (ev.target && ev.target.closest && ev.target.closest('button, img, video, input, textarea')) return;
+    ev.stopPropagation();
+    const selected = new Set(selectedIds);
+    const on = selected.has(d.id);
+    if (on) selected.delete(d.id);
+    else if (selected.size < 2) selected.add(d.id);
+    const selColor = getSelectionColor(d);
+    card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`);
+    emit('update:selectedIds', Array.from(selected));
+  });
 
   card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
-    .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
+      .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'));
 
-  buildHeader(card, d)
+  /* ---------- 顶部 header ---------- */
+  buildHeader(card, d);
 
-  card.append('xhtml:style').text(`
-    .thin-scroll {
-      overflow-y: overlay; /* 尝试覆盖模式，部分浏览器支持 */
-      scrollbar-gutter: stable; /* 现代浏览器：预留空间防止跳动 */
-    }
-    /* 定义滚动条宽度 */
-    .thin-scroll::-webkit-scrollbar {
-      width: 3px; /* 极细 */
-      height: 3px;
-    }
-    /* 轨道透明 */
-    .thin-scroll::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    /* 滑块默认透明 (不可见) */
-    .thin-scroll::-webkit-scrollbar-thumb {
-      background: transparent;
-      border-radius: 2px;
-    }
-    /* 只有当鼠标悬停在容器上时，滑块才变色 */
-    .thin-scroll:hover::-webkit-scrollbar-thumb {
-      background: #d1d5db; /* 浅灰色 */
-    }
-    .thin-scroll:hover::-webkit-scrollbar-thumb:hover {
-      background: #9ca3af; /* 深一点的灰色 */
-    }
-    /* 权重数字输入框样式（小方块） */
-    .weight-input {
-      color: #747b88ff !important;
-      width: 10px !important; /* 固定宽度，小方块样式 */
-      height: 10px !important;
-      text-align: center !important;
-      padding: 0 !important;
-      font-size: 5px !important;
-      border: 1px solid #e5e7eb !important;
-      border-radius: 2px !important;
-      background: #f9fafb !important;
-      /* 核心：移除所有浏览器的上下箭头 */
-      -webkit-appearance: none !important; /* Chrome, Safari, Edge */
-      -moz-appearance: textfield !important; /* Firefox */
-      appearance: none !important; /* 标准语法 */
-    }
-    /* 兼容Firefox：确保没有箭头 */
-    .weight-input::-webkit-inner-spin-button,
-    .weight-input::-webkit-outer-spin-button {
-      -webkit-appearance: none !important;
-      margin: 0 !important;
-    }
-    .weight-input:focus {
-      outline: none !important;
-      border-color: var(--card-border-color);
-      background: #ffffff !important;
-    }
-    .phrase-input {
-      color: #747b88ff !important;
-      flex: 1 !important;
-      font-size: 6px !important;
-      padding: 2px 2px !important;
-      border: 1px solid #e5e7eb !important;
-      border-radius: 2px !important;
-      outline: none !important;
-    }
-    .phrase-input:focus {
-      border-color: var(--card-border-color);
-    }
-  `)
-
+  /* ---------- 主体：左右两列 ---------- */
   const body = card.append('xhtml:div')
     .style('flex', '1 1 auto')
     .style('min-height', '0')
     .style('display', 'flex')
-    .style('padding', '4px 4px')
+    .style('padding', '4px 2px');
 
-  // --- 左侧主容器 ---
+  /* ==================== 左侧 Input 列 ==================== */
   const left = body.append('xhtml:div')
-    .attr('class', 'thin-scroll nodrag') // 应用上面定义的 class
+    .attr('class', 'thin-scroll nodrag')
     .style('flex', '1 1 0')
     .style('min-width', '0')
-    .style('padding', '2px 4px')
+    .style('padding', '2px 4px 4px')
     .style('border-right', '1px solid #e5e7eb')
     .style('display', 'flex')
     .style('flex-direction', 'column')
-    .style('gap', '1px')
-    .style('overflow-y', 'auto') 
+    .style('gap', '2px')
+    .style('font-size', '9px')
+    .style('line-height', '1.3');
 
-  // 1. 顶部 Header (不变)
+  // Input + ↻
   const headerRow = left.append('xhtml:div')
     .style('display', 'flex')
-    .style('justify-content', 'space-between')
-    .style('align-items', 'center')
-    .style('margin-bottom', '4px')
+    .style('align-items', 'center');
 
   headerRow.append('xhtml:div')
-    .style('font-size', '9px')
-    .style('font-weight', '600')
-    .style('color', '#6b7280')
-    .style('user-select', 'none')
-    .text('Input')
-
-  headerRow.append('xhtml:div')
-    .style('cursor', 'pointer')
     .style('font-size', '10px')
+    .style('font-weight', '600')
+    .style('color', '#4b5563')
+    .text('Input');
+
+  headerRow.append('xhtml:div')
+    .style('margin-left', 'auto')
+    .style('cursor', 'pointer')
+    .style('font-size', '11px')
     .style('color', '#6b7280')
-    .style('padding', '0 2px')
     .text('↻')
     .attr('title', 'Apply & Regenerate')
-    .on('mouseenter', function() { d3.select(this).style('color', '#2563eb') })
-    .on('mouseleave', function() { d3.select(this).style('color', '#6b7280') })
+    .on('mouseenter', function () { d3.select(this).style('color', '#2563eb'); })
+    .on('mouseleave', function () { d3.select(this).style('color', '#6b7280'); })
     .on('mousedown', ev => ev.stopPropagation())
     .on('click', (ev) => {
-      ev.stopPropagation()
-      const currentParams = {}
+      ev.stopPropagation();
+      const params = d.parameters || {};
+      const currentParams = {};
 
-      // 1. 收集 Positive Prompt（短语+权重 → 目标格式）
-      // 直接用之前的 params.positive_prompt（已在 updatePositivePrompt 中实时更新）
       if (params.positive_prompt) {
-        // 解析后重新组织成 "(关键词:权重), (关键词:权重)" 格式
         const positivePhrases = parsePrompt(params.positive_prompt);
         const positiveStr = positivePhrases
           .filter(p => p.text.trim())
@@ -1592,7 +1511,6 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
         currentParams.positive_prompt = positiveStr;
       }
 
-      // 2. 收集 Negative Prompt（和 Positive 格式一致）
       if (params.negative_prompt) {
         const negativePhrases = parsePrompt(params.negative_prompt);
         const negativeStr = negativePhrases
@@ -1602,318 +1520,143 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
         currentParams.negative_prompt = negativeStr;
       }
 
-      // 3. 收集其他小参数（seed、steps 等，仍用 .node-input 类）
-      left.selectAll('.node-input').each(function() {
-          const el = d3.select(this)
-          const key = el.attr('data-key')
-          let val = el.property('value')
-          if (el.attr('type') === 'number') val = Number(val)
-          // 排除 positive_prompt/negative_prompt（已单独处理），避免重复
-          if (key && key !== 'positive_prompt' && key !== 'negative_prompt') {
-            currentParams[key] = val;
-          }
-      })
+      left.selectAll('.node-input').each(function () {
+        const el = d3.select(this);
+        const key = el.attr('data-key');
+        let val = el.property('value');
+        if (el.attr('type') === 'number') val = Number(val);
+        if (key && key !== 'positive_prompt' && key !== 'negative_prompt') {
+          currentParams[key] = val;
+        }
+      });
 
-    // 打印验证：确认格式正确
-    console.log('currentParams:', currentParams, d.module_id);
-    // 输出示例：
-    // positive_prompt: "(black and white spotted dog:1.6), (glossy coat:1.2), ..."
-    // negative_prompt: "(bad anatomy:1.2), (blurry:1.3), ..."
-
-    emit('regenerate-node', d.id, d.module_id, currentParams)
-  })
-
-  // --- 核心渲染函数：增加了 fontSize 参数 ---
-  // titleSize: 标题字号, inputSize: 内容字号
-  const createNestedField = (container, label, key, value, type, isFullWidth = true, titleSize = '7px', inputSize = '8.5px') => {
-      const wrapper = container.append('xhtml:div')
-          .style('display', 'flex')
-          .style('flex-direction', 'column')
-          .style('gap', '1px')
-          
-      if (isFullWidth) {
-          wrapper.style('width', '100%')
-      } else {
-          wrapper
-              .style('flex', '1 1 28%') 
-              .style('min-width', '0')
-      }
-
-      // 标题
-      wrapper.append('xhtml:div')
-          .style('font-size', titleSize)
-          .style('color', '#292f38ff')
-          .style('white-space', 'nowrap')
-          .style('overflow', 'hidden')
-          .style('text-overflow', 'ellipsis')
-          .style('line-height', '1.3') 
-          .style('margin', '0')
-          .style('padding-left','1px')
-          .text(label)
-
-      const contentDiv = wrapper.append('xhtml:div')
-          .style('width', '100%')
-          // 注意：对于 Textarea (Prompt)，不要设 line-height: 0，否则可能切断文字
-          // 只有小参数才设为 0 以消除间距
-          .style('line-height', isFullWidth ? 'normal' : '0')
-
-      let input;
-      if (type === 'textarea') {
-          const hasContent = value && String(value).trim().length > 0
-          let rowCount = 1
-          if (hasContent) {
-              rowCount = (key === 'positive_prompt') ? 3 : 2
-          }
-
-          input = contentDiv.append('xhtml:textarea')
-              .attr('rows', rowCount)
-              .style('resize', 'none')
-              .text(value)
-      } else {
-          input = contentDiv.append('xhtml:input')
-              .attr('type', type === 'number' ? 'number' : 'text')
-              .attr('value', value)
-      }
-
-      // 【关键逻辑】差异化上边距
-      // 如果是 FullWidth (Prompt)，margin-top 为 0 (保持原样)
-      // 如果是其他小参数，margin-top 为 -2px (向上拉紧)
-      const marginTopVal = isFullWidth ? '2px' : '1px'
-        
-
-      input.attr('class', 'node-input thin-scroll')
-           .attr('data-key', key)
-           .style('width', '100%')
-           .style('display', 'block')
-           .style('font-size', inputSize)
-           .style('line-height', '1.3')
-           .style('color', '#747b88ff')
-           .style('background', 'transparent')
-           .style('border', '1px solid transparent')
-           .style('border-radius', '2px')
-           .style('padding', '0px 2px')
-           .style('outline', 'none')
-           .style('font-family', 'inherit')
-           .style('margin-top', marginTopVal) // 应用差异化边距
-           .on('mousedown', ev => ev.stopPropagation())
-           .on('focus', function() { 
-                d3.select(this).style('background', '#ffffff').style('border-color', '#e5e7eb') 
-           })
-           .on('blur', function() { 
-                d3.select(this).style('background', 'transparent').style('border-color', 'transparent') 
-           })
-           .on('mouseenter', function() {
-                if (document.activeElement !== this) d3.select(this).style('background', '#f9fafb')
-            })
-           .on('mouseleave', function() {
-                 if (document.activeElement !== this) d3.select(this).style('background', 'transparent')
-            })
-  }
-
-  // --- 数据准备 ---
-  const params = d.parameters || {}
-  const excluded = ['positive_prompt', 'negative_prompt', 'text', 'seed']
-  const smallParams = Object.entries(params).filter(([k]) => !excluded.includes(k))
-
-  // ==============================================
-  // 【重点修改：Positive Prompt 改为数字输入框（小方块）】
-  // ==============================================
-  // 1. Positive Prompt 小标题（独立div，放大样式）
-  left.append('xhtml:div')
-    .style('font-size', '7px')
-    .style('color', '#292f38ff')
-    .style('white-space', 'nowrap')
-    .style('text-overflow', 'ellipsis')
-    .style('line-height', '1.3') 
-    .style('margin', '0')
-    .style('padding-left','1px')
-    .text('Positive Prompt');
-
-  // 2. 解析 Prompt 为短语+权重
-  const parsePrompt = (prompt) => {
-    if (!prompt) return [];
-    const trimmedPrompt = prompt.trim();
-    const phrases = [];
-    //console.log(`prompt: ${prompt}`)
-
-    // 统一处理：先去掉所有括号，再按逗号拆分，最后提取关键词和权重
-    // 步骤1：去掉所有括号（不管是单个还是多个）
-    const noBracketsPrompt = trimmedPrompt.replace(/[()]/g, '');
-    // 步骤2：按逗号拆分（处理多个短语的情况）
-    const splitItems = noBracketsPrompt.split(',').map(item => item.trim()).filter(item => item);
-    //console.log(`splitItems: ${splitItems}`)
-    // 遍历每个拆分后的项，提取关键词和权重
-    splitItems.forEach(item => {
-      if (item.includes(':')) {
-        // 情况：包含权重（关键词:权重）
-        const [text, weightStr] = item.split(':').map(part => part.trim());
-        //console.log(`text: ${text}`)
-        phrases.push({
-          text: text, // 纯关键词（去掉:权重）
-          weight: parseFloat(weightStr) || 1.0 // 提取权重
-        });
-      } else {
-        // 情况：没有权重，默认权重1.0
-        phrases.push({
-          text: item,
-          weight: 1.0
-        });
-      }
+      emit('regenerate-node', d.id, d.module_id, currentParams);
     });
 
-    // 过滤空文本
-    return phrases.filter(p => p.text.trim());
-};
+  const params = d.parameters || {};
+  const isVideoNode = /Video/i.test(d.module_id);
+  const orderedParamKeys = isVideoNode
+    ? ['batch_size', 'fps', 'length', 'height', 'width']
+    : ['batch_size', 'guidance', 'steps', 'height', 'width'];
 
-  // 3. 更新 Prompt 数据
-  const updatePrompt = (phrases) => {
+  const paramPairs = orderedParamKeys
+    .filter(k => params[k] !== undefined)
+    .map(k => [k, params[k]]);
+
+  const parsePrompt = (prompt) => {
+    if (!prompt) return [];
+    const trimmed = prompt.trim();
+    if (!trimmed) return [];
+
+    const noBrackets = trimmed.replace(/[()]/g, '');
+    return noBrackets
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean)
+      .map(item => {
+        if (item.includes(':')) {
+          const [text, weightStr] = item.split(':').map(v => v.trim());
+          return { text, weight: parseFloat(weightStr) || 1.0 };
+        }
+        return { text: item, weight: 1.0 };
+      })
+      .filter(p => p.text.trim());
+  };
+
+  /* ---------- Positive Prompt ---------- */
+    /* ---------- Positive Prompt ---------- */
+  const positiveSection = left.append('xhtml:div')
+    .attr('class', 'prompt-section');
+
+  let positiveCollapsed = false;
+  let positiveHasContent = false;   // ★ 是否有内容，用来控制是否可点
+
+  const positiveHeader = positiveSection.append('xhtml:div')
+    .attr('class', 'prompt-section-header')
+    .on('mousedown', ev => ev.stopPropagation())
+    .on('click', ev => {
+      ev.stopPropagation();
+      // ★ 没有内容时，仿 Input Images：三角灰色且不可展开
+      if (!positiveHasContent) return;
+
+      positiveCollapsed = !positiveCollapsed;
+      positivePromptContainer.style('display', positiveCollapsed ? 'none' : 'block');
+      positiveToggle.text(positiveCollapsed ? '▸' : '▾');
+    });
+
+  const positiveToggle = positiveHeader.append('xhtml:span')
+    .attr('class', 'prompt-toggle-icon')
+    .text('▾');
+
+  positiveHeader.append('xhtml:span')
+    .attr('class', 'prompt-section-title')
+    .text('Positive Prompt');
+
+  const positiveCountSpan = positiveHeader.append('xhtml:span')
+    .attr('class', 'prompt-count')
+    .text('(0)');
+
+  const positivePromptContainer = positiveSection.append('xhtml:div')
+    .attr('class', 'prompt-section-body');
+
+  // ★ 根据是否有内容，统一更新三角样式和折叠状态
+  const updatePositiveToggleState = (hasContent) => {
+    positiveHasContent = hasContent;
+
+    if (!hasContent) {
+      positiveCollapsed = true;
+      positivePromptContainer.style('display', 'none');
+      positiveToggle.text('▸')
+        .style('color', '#d1d5db')
+        .style('cursor', 'default');
+    } else {
+      positiveToggle
+        .style('color', '#9ca3af')     // 和你 CSS 的风格保持一致
+        .style('cursor', 'pointer');
+      // 默认展开
+      positiveCollapsed = false;
+      positivePromptContainer.style('display', 'block');
+      positiveToggle.text('▾');
+    }
+  };
+
+  const updatePositiveCount = (phrases) => {
+    positiveCountSpan.text(`(${phrases.length})`);
+    updatePositiveToggleState(phrases.length > 0);
+  };
+
+  const updatePositivePrompt = (phrases) => {
     const updatedPrompt = phrases
       .filter(p => p.text.trim())
-      .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`) // 用|分隔文本和权重
+      .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`)
       .join(', ');
     params.positive_prompt = updatedPrompt;
     emit('update-node-parameters', d.id, { ...params });
+    updatePositiveCount(phrases);
   };
 
-  // 4. 权重控制容器（放在左侧栏，占满宽度）
-  const positivePromptContainer = left.append('xhtml:div')
-    .style('width', '100%')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('gap', '6px')
-    .style('padding', '4px 0');
-
-  // 5. 渲染短语+数字输入框（小方块）
   const renderPositivePhraseRows = () => {
     positivePromptContainer.selectAll('*').remove();
     const phrases = parsePrompt(params.positive_prompt || params.text || '');
+    updatePositiveCount(phrases);
 
-    phrases.forEach((phrase, index) => {
-      // 每行布局：文本输入 + 权重标签 + 数字输入框 + 删除按钮
+    // ★ 没有 phrase 时，直接返回（不渲染行，只是让三角变灰 & 不可点）
+    if (!phrases.length) return;
+
+    phrases.forEach(phrase => {
       const row = positivePromptContainer.append('xhtml:div')
-        .attr('class', 'phrase-row')
-        .style('display', 'flex')
-        .style('align-items', 'center')
-        .style('gap', '1px') // 缩小间距，更紧凑
-        .style('min-height', '8px');
+        .attr('class', 'phrase-row');
 
-      // 短语文本输入（占满剩余宽度）
       row.append('xhtml:input')
         .attr('class', 'phrase-input')
         .attr('type', 'text')
         .attr('value', phrase.text)
         .on('mousedown', ev => ev.stopPropagation())
-        .on('input', function() {
+        .on('input', function () {
           phrase.text = this.value;
-          updatePrompt(phrases);
+          updatePositivePrompt(phrases);
         });
 
-      // 【核心修改：权重拉杆 → 数字输入框（小方块）】
-      row.append('xhtml:input')
-        .attr('class', 'weight-input') // 应用小方块样式
-        .attr('type', 'number')
-        .attr('min', '0.0')
-        .attr('max', '1.9')
-        .attr('step', '0.1')
-        .attr('value', phrase.weight.toFixed(1))
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('input', function() {
-          // 限制输入范围和精度
-          let val = parseFloat(this.value);
-          if (isNaN(val)) val = 1.0;
-          val = Math.min(1.9, Math.max(0.0, val)); // 0.1-3.0 范围
-          this.value = val.toFixed(1); // 保留1位小数
-          phrase.weight = val;
-          updatePrompt(phrases);
-        });
-
-    });
-
-    // 添加新短语按钮
-    // positivePromptContainer.append('xhtml:button')
-    //   .text('+ Add Phrase')
-    //   .style('padding', '3px 6px')
-    //   .style('font-size', '8px')
-    //   .style('color', '#2563eb')
-    //   .style('background', 'transparent')
-    //   .style('border', '1px dashed #93c5fd')
-    //   .style('border-radius', '2px')
-    //   .style('cursor', 'pointer')
-    //   .on('mousedown', ev => ev.stopPropagation())
-    //   .on('click', function(ev) {
-    //     ev.stopPropagation();
-    //     const phrases = parsePrompt(params.positive_prompt || '');
-    //     phrases.push({ text: '', weight: 1.0 });
-    //     updatePrompt(phrases);
-    //     renderPhraseRows();
-    //     // 自动聚焦
-    //     setTimeout(() => {
-    //       positivePromptContainer.selectAll('.phrase-input').last().node().focus();
-    //     }, 0);
-    //   });
-  };
-
-  // 初始渲染 Positive Prompt 权重控制
-  renderPositivePhraseRows();
-
-   // ==============================================
-  // 【新增：Negative Prompt 改为和 Positive 一样的形式】
-  // ==============================================
-  // 1. Negative Prompt 小标题（和 Positive 样式一致）
-  left.append('xhtml:div')
-    .style('font-size', '7px')
-    .style('color', '#292f38ff')
-    .style('white-space', 'nowrap')
-    .style('text-overflow', 'ellipsis')
-    .style('line-height', '1.3') 
-    .style('margin', '0')
-    .style('padding-left','1px')
-    .text('Negative Prompt');
-
-  // 2. 更新 Negative Prompt 数据（专属函数，保存到 negative_prompt 字段）
-  const updateNegativePrompt = (phrases) => {
-    const updatedPrompt = phrases
-      .filter(p => p.text.trim())
-      .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`) // 和 Positive 统一保存格式
-      .join(', ');
-    params.negative_prompt = updatedPrompt;
-    emit('update-node-parameters', d.id, { ...params });
-  };
-
-  // 3. Negative 专属容器（和 Positive 布局一致）
-  const negativePromptContainer = left.append('xhtml:div')
-    .style('width', '100%')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('gap', '6px')
-    .style('padding', '4px 0');
-
-  // 4. 渲染 Negative 短语+权重小方块（复用 Positive 逻辑）
-  const renderNegativePhraseRows = () => {
-    negativePromptContainer.selectAll('*').remove();
-    // 解析 Negative 专属字段
-    const phrases = parsePrompt(params.negative_prompt || '');
-
-    phrases.forEach((phrase, index) => {
-      const row = negativePromptContainer.append('xhtml:div')
-        .attr('class', 'phrase-row')
-        .style('display', 'flex')
-        .style('align-items', 'center')
-        .style('gap', '1px')
-        .style('min-height', '8px');
-
-      // 纯文本输入框
-      row.append('xhtml:input')
-        .attr('class', 'phrase-input')
-        .attr('type', 'text')
-        .attr('value', phrase.text)
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('input', function() {
-          phrase.text = this.value;
-          updateNegativePrompt(phrases);
-        });
-
-      // 独立权重小方块
       row.append('xhtml:input')
         .attr('class', 'weight-input')
         .attr('type', 'number')
@@ -1922,7 +1665,119 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
         .attr('step', '0.1')
         .attr('value', phrase.weight.toFixed(1))
         .on('mousedown', ev => ev.stopPropagation())
-        .on('input', function() {
+        .on('input', function () {
+          let val = parseFloat(this.value);
+          if (isNaN(val)) val = 1.0;
+          val = Math.min(1.9, Math.max(0.0, val));
+          this.value = val.toFixed(1);
+          phrase.weight = val;
+          updatePositivePrompt(phrases);
+        });
+    });
+  };
+
+  // 初次渲染：内部会根据内容长度自动决定灰色/可点击状态
+  renderPositivePhraseRows();
+
+  /* ---------- Negative Prompt ---------- */
+    /* ---------- Negative Prompt ---------- */
+  const negativeSection = left.append('xhtml:div')
+    .attr('class', 'prompt-section');
+
+  let negativeCollapsed = false;
+  let negativeHasContent = false;
+
+  const negativeHeader = negativeSection.append('xhtml:div')
+    .attr('class', 'prompt-section-header')
+    .on('mousedown', ev => ev.stopPropagation())
+    .on('click', ev => {
+      ev.stopPropagation();
+      if (!negativeHasContent) return;  // ★ 无内容时禁止展开
+
+      negativeCollapsed = !negativeCollapsed;
+      negativePromptContainer.style('display', negativeCollapsed ? 'none' : 'block');
+      negativeToggle.text(negativeCollapsed ? '▸' : '▾');
+    });
+
+  const negativeToggle = negativeHeader.append('xhtml:span')
+    .attr('class', 'prompt-toggle-icon')
+    .text('▾');
+
+  negativeHeader.append('xhtml:span')
+    .attr('class', 'prompt-section-title')
+    .text('Negative Prompt');
+
+  const negativeCountSpan = negativeHeader.append('xhtml:span')
+    .attr('class', 'prompt-count')
+    .text('(0)');
+
+  const negativePromptContainer = negativeSection.append('xhtml:div')
+    .attr('class', 'prompt-section-body');
+
+  const updateNegativeToggleState = (hasContent) => {
+    negativeHasContent = hasContent;
+
+    if (!hasContent) {
+      negativeCollapsed = true;
+      negativePromptContainer.style('display', 'none');
+      negativeToggle.text('▸')
+        .style('color', '#d1d5db')
+        .style('cursor', 'default');
+    } else {
+      negativeToggle
+        .style('color', '#9ca3af')
+        .style('cursor', 'pointer');
+      negativeCollapsed = false;
+      negativePromptContainer.style('display', 'block');
+      negativeToggle.text('▾');
+    }
+  };
+
+  const updateNegativeCount = (phrases) => {
+    negativeCountSpan.text(`(${phrases.length})`);
+    updateNegativeToggleState(phrases.length > 0);
+  };
+
+  const updateNegativePrompt = (phrases) => {
+    const updatedPrompt = phrases
+      .filter(p => p.text.trim())
+      .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`)
+      .join(', ');
+    params.negative_prompt = updatedPrompt;
+    emit('update-node-parameters', d.id, { ...params });
+    updateNegativeCount(phrases);
+  };
+
+  const renderNegativePhraseRows = () => {
+    negativePromptContainer.selectAll('*').remove();
+    const phrases = parsePrompt(params.negative_prompt || '');
+    updateNegativeCount(phrases);
+
+    if (!phrases.length) return;  // ★ 0 个时，不渲染行
+
+    phrases.forEach(phrase => {
+      const row = negativePromptContainer.append('xhtml:div')
+        .attr('class', 'phrase-row');
+
+      row.append('xhtml:input')
+        .attr('class', 'phrase-input')
+        .attr('type', 'text')
+        .attr('value', phrase.text)
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('input', function () {
+          phrase.text = this.value;
+          updateNegativePrompt(phrases);
+        });
+
+      row.append('xhtml:input')
+        .attr('class', 'weight-input')
+        .attr('type', 'number')
+        .attr('min', '0.0')
+        .attr('max', '1.9')
+        .attr('step', '0.1')
+        .attr('value', phrase.weight.toFixed(1))
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('input', function () {
           let val = parseFloat(this.value);
           if (isNaN(val)) val = 1.0;
           val = Math.min(1.9, Math.max(0.0, val));
@@ -1930,58 +1785,154 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
           phrase.weight = val;
           updateNegativePrompt(phrases);
         });
-
     });
   };
 
-  // 初始渲染 Negative Prompt
   renderNegativePhraseRows();
 
-  // 4. 其他参数的大容器
-  if (smallParams.length > 0) {
-      const othersContainer = left.append('xhtml:div')
-          .attr('class', 'others-params-container')
-          .style('display', 'flex')
-          .style('flex-wrap', 'wrap')
-          .style('gap', '3px') // 稍微调小间距
-          .style('padding-top', '6px')
-          .style('border-top', '1px dashed #f3f4f6')
 
-      smallParams.forEach(([key, val]) => {
-          const isNum = typeof val === 'number'
-          const labelName = key.replace(/_/g, ' ')
-          
-          // 【改动5】在这里传入更小的字号
-          // 标题: 6px (极小)
-          // 内容: 7.5px (紧凑)
-          createNestedField(othersContainer, labelName, key, val, isNum ? 'number' : 'text', false, '6.5px', '6.5px')
-      })
+  /* ---------- Input Images ---------- */
+  const inputImages = (d.assets && d.assets.input && d.assets.input.images) || [];
+  const imageSection = left.append('xhtml:div')
+    .attr('class', 'input-images-section');
+
+  const hasImages = inputImages.length > 0;
+  let imagesCollapsed = false;
+  let grid = null;
+
+  const imageHeader = imageSection.append('xhtml:div')
+    .attr('class', 'prompt-section-header')
+    .on('mousedown', ev => ev.stopPropagation())
+    .on('click', ev => {
+      ev.stopPropagation();
+      if (!hasImages || !grid) return;
+      imagesCollapsed = !imagesCollapsed;
+      grid.style('display', imagesCollapsed ? 'none' : 'flex');
+      imageToggle.text(imagesCollapsed ? '▸' : '▾');
+    });
+
+  const imageToggle = imageHeader.append('xhtml:span')
+    .attr('class', 'prompt-toggle-icon')
+    .text(hasImages ? '▾' : '▸')
+    .style('color', hasImages ? '#4b5563' : '#d1d5db')
+    .style('cursor', hasImages ? 'pointer' : 'default');
+
+  imageHeader.append('xhtml:span')
+    .attr('class', 'prompt-section-title')
+    .text('Input Images');
+
+  imageHeader.append('xhtml:span')
+    .attr('class', 'prompt-count')
+    .text(`(${inputImages.length})`);
+
+  if (hasImages) {
+    grid = imageSection.append('xhtml:div')
+      .attr('class', 'input-images-grid');
+
+    inputImages.slice(0, 2).forEach(url => {
+      const thumbWrapper = grid.append('xhtml:div')
+        .attr('class', 'input-image-thumb')
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('click', ev => {
+          ev.stopPropagation();
+          emit('open-preview', url, 'image');
+        });
+
+      thumbWrapper.append('xhtml:img')
+        .attr('src', url)
+        .attr('alt', 'Input image');
+    });
   }
 
+  /* ---------- Parameters ---------- */
+  if (paramPairs.length) {
+    const paramSection = left.append('xhtml:div')
+      .attr('class', 'input-params-section');
+
+    // 折叠头部：小三角 + 标题
+    const header = paramSection.append('xhtml:div')
+      .attr('class', 'input-params-header');
+
+    const toggleIcon = header.append('xhtml:span')
+      .attr('class', 'input-params-toggle-icon')
+      .text('▾');  // 初始展开
+
+    header.append('xhtml:span')
+      .attr('class', 'input-params-title-text')
+      .text('Parameters');
+
+    // 折叠 body
+    const body = paramSection.append('xhtml:div')
+      .attr('class', 'input-params-body');
+
+    const grid = body.append('xhtml:div')
+      .attr('class', 'input-params-grid');
+
+    paramPairs.forEach(([key, val]) => {
+      const isNum = typeof val === 'number';
+      const labelName =
+        key === 'batch_size' ? 'batch' : key.replace(/_/g, ' ');
+
+      const field = grid.append('xhtml:div')
+        .attr('class', 'input-param-field');
+
+      field.append('xhtml:div')
+        .attr('class', 'input-param-label')
+        .text(labelName);
+
+      const input = field.append('xhtml:input')
+        .attr('class', 'input-param-input node-input')
+        .attr('data-key', key)
+        .attr('type', isNum ? 'number' : 'text')
+        .attr('value', val);
+
+      input.on('mousedown', ev => ev.stopPropagation());
+    });
+
+    // 点击 header 折叠 / 展开
+    let paramsCollapsed = false;
+    header.on('click', () => {
+      paramsCollapsed = !paramsCollapsed;
+      body.style('display', paramsCollapsed ? 'none' : 'block');
+      toggleIcon.text(paramsCollapsed ? '▸' : '▾');
+    });
+  }
+
+
+  /* ==================== 右侧 Output 列 ==================== */
   const right = body.append('xhtml:div')
+    .attr('class', 'thin-scroll')
     .style('flex', '1 1 0')
     .style('min-width', '0')
     .style('padding', '2px 4px')
     .style('display', 'flex')
-    .style('flex-direction', 'column') // 垂直排列多个媒体
-    .style('align-items', 'center')     // 水平居中
-    .style('justify-content', 'flex-start') // 从顶部开始排列
+    .style('flex-direction', 'column')
+    .style('align-items', 'stretch')
+    .style('justify-content', 'flex-start')
     .style('position', 'relative')
-    .style('overflow-y', 'auto')        // 当内容超出时显示垂直滚动条
-    .style('max-height', '100%');       // 限制最大高度，防止溢出
+    .style('overflow-y', 'auto')
+    .style('max-height', '100%');
 
-  right.append('xhtml:div')
-    .style('position', 'absolute')
-    .style('top', '2px')
-    .style('left', '4px')
-    .style('font-size', '9px')
-    .style('font-weight', '600')
-    .style('color', '#6b7280')
-    .style('user-select', 'none')
-    .style('z-index', '1') // 确保标签在媒体之上
-    .text('Output')
+  // Output 头部 + A 按钮（替代 footer）
+  const outputHeader = right.append('xhtml:div')
+    .attr('class', 'output-header');
 
-  // --- 【修改点 3：循环渲染所有媒体项】 ---
+  outputHeader.append('xhtml:span')
+    .attr('class', 'output-title')
+    .text('Output');
+
+  if (canAddToStitch) {
+    const addBtn = outputHeader.append('xhtml:button')
+      .attr('class', 'add-clip-btn')
+      .text('A')
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('click', ev => {
+        ev.stopPropagation();
+        emit('add-clip', d, isVideo ? 'video' : 'image');
+      });
+  }
+
+  // 视频预览
   if (videoUrls.length > 0) {
     const videoContainer = right.append('xhtml:div')
       .style('width', '100%')
@@ -1989,31 +1940,31 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
       .style('flex-direction', 'column')
       .style('gap', '4px')
       .style('margin-top', '4px');
-    
-    videoUrls.forEach((url, index) => {
-        // 创建视频元素并获取DOM节点
-      const v = videoContainer.append('xhtml:video')
-          .style('width', '100%')
-          .style('height', '80px')
-          .style('object-fit', 'contain')
-          .attr('muted', true)
-          .attr('playsinline', true)
-          .attr('preload', 'metadata')
-          .on('mousedown', ev => ev.stopPropagation())
-          .on('click', ev => {
-            ev.stopPropagation()
-            emit('open-preview', url, 'video')
-          })
-        const el = v.node()
-        el.autoplay = true
-        el.loop = true
-        el.muted = true
-        el.playsInline = true
-        el.src = url
-    })
-  }  
 
-  // 保留图片渲染逻辑（只渲染非视频的图片）
+    videoUrls.forEach(url => {
+      const v = videoContainer.append('xhtml:video')
+        .style('width', '100%')
+        .style('height', '80px')
+        .style('object-fit', 'contain')
+        .attr('muted', true)
+        .attr('playsinline', true)
+        .attr('preload', 'metadata')
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('click', ev => {
+          ev.stopPropagation();
+          emit('open-preview', url, 'video');
+        });
+
+      const el = v.node();
+      el.autoplay = true;
+      el.loop = true;
+      el.muted = true;
+      el.playsInline = true;
+      el.src = url;
+    });
+  }
+
+  // 图片预览
   if (imageUrls.length > 0) {
     const imgContainer = right.append('xhtml:div')
       .style('width', '100%')
@@ -2021,56 +1972,64 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
       .style('flex-direction', 'column')
       .style('gap', '4px')
       .style('margin-top', '4px');
-    
+
     imageUrls.forEach((url, index) => {
-        imgContainer.append('xhtml:img')
-          .style('width', 'auto')
-          .style('max-width', '100%') // 最大宽度不超过容器
-          .style('height', '100px')   // 固定高度，便于统一布局
-          .style('object-fit', 'contain') // 保持宽高比
-          .attr('src', url)
-          .attr('alt', `Output image ${index + 1}`)
-          .on('mousedown', ev => ev.stopPropagation())
-          .on('click', ev => {
-            ev.stopPropagation();
-            emit('open-preview', url, 'image');
-          });
-    })
+      imgContainer.append('xhtml:img')
+        .style('width', 'auto')
+        .style('max-width', '100%')
+        .style('height', '100px')
+        .style('object-fit', 'contain')
+        .attr('src', url)
+        .attr('alt', `Output image ${index + 1}`)
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('click', ev => {
+          ev.stopPropagation();
+          emit('open-preview', url, 'image');
+        });
+    });
   }
 
-  const footer = card.append('xhtml:div')
-    .style('display', 'flex')
-    .style('justify-content', 'flex-end')
-    .style('padding', '2px')
+    /* ==================== 右下角拖拽：只改变节点高度 ==================== */
+  const resizeHandle = card.append('xhtml:div')
+    .attr('class', 'node-resize-handle')
+    .on('mousedown', (event) => {
+      event.stopPropagation();
+      event.preventDefault();
 
-  if (canAddToStitch) {
-    const selColor = isVideo ? NODE_COLORS.video : NODE_COLORS.image
-    footer.append('xhtml:button')
-      .attr('class', 'add-clip-btn')
-      .html('▶')
-      .style('opacity', '0')
-      .style('transition', 'opacity 0.15s ease-in-out')
-      .style('width', '20px')
-      .style('height', '20px')
-      .style('display', 'flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('color', selColor)
-      .style('font-size', '1.125rem')
-      .style('border', 'none')
-      .style('background-color', 'transparent')
-      .style('padding', '0')
-      .style('cursor', 'pointer')
-      .on('mousedown', ev => ev.stopPropagation())
-      .on('click', ev => {
-        ev.stopPropagation()
-        emit('add-clip', d, isVideo ? 'video' : 'image')
-      })
-  }
+      const startY = event.clientY;
+      const startHeight = d.calculatedHeight || parseFloat(fo.attr('height')) || 180;
 
-  addTooltip(gEl, d)
+      d3.select('body').classed('node-card-resizing', true);
+
+      d3.select(window)
+        .on('mousemove.node-resize', (ev) => {
+          const dy = ev.clientY - startY;
+          const minHeight = 140;      // 给一个最小高度，防止太扁
+          const maxHeight = 480;      // 可以自行调大/调小
+          const newHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + dy));
+
+          d.calculatedHeight = newHeight;
+
+          // 更新 foreignObject 高度 & 垂直居中
+          fo
+            .attr('height', newHeight)
+            .attr('y', -newHeight / 2);
+
+          // 通知外层（如果你想把高度持久化）
+          if (emit) {
+            emit('resize-node-height', d.id, newHeight);
+          }
+        })
+        .on('mouseup.node-resize', () => {
+          d3.select(window).on('.node-resize', null);
+          d3.select('body').classed('node-card-resizing', false);
+        });
+    });
+
+  addTooltip(gEl, d);
 }
-  // 实现AddWorkflow卡片渲染（复用TextFull布局，替换图标）
+
+// 实现AddWorkflow卡片渲染（复用TextFull布局，替换图标）
 function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     const fo = gEl.append('foreignObject')
       .attr('width', d.calculatedWidth)
@@ -2080,7 +2039,7 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
       .style('overflow', 'visible')
 
     const card = fo.append('xhtml:div')
-      .attr('class', 'node-card')
+      .attr('class', 'node-card node-card-resizable')
       .style('width', '100%')
       .style('height', '100%')
       .style('display', 'flex')
@@ -2236,7 +2195,7 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     
     const toolbar = card.append('xhtml:div')
       .style('flex-shrink', '0')
-      .style('padding', '4px 6px')
+      .style('padding', '4px 2px')
       .style('display', 'flex')
       .style('justify-content', 'flex-end')
       .style('gap', '4px')

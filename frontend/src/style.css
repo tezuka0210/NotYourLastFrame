@@ -34,9 +34,10 @@ body {
 
 /* ===================== workflow 节点卡片 ===================== */
 
+/* workflow 节点卡片统一基础外观，宽高由容器控制 */
 .node-card {
-  width: 140px;
-  border-radius: 10px;
+  width: 100%;              /* 由 foreignObject 控制卡片宽度 */
+  border-radius: 8px;
   overflow: hidden;
   background: #ffffff;
   border: 1px solid #e5e7eb;
@@ -255,8 +256,8 @@ body {
   height: 94px;
   display: flex;
   align-items: center;
-  padding-top: 20px;    /* 原来 24 */
-  padding-bottom: 8px;  /* 原来 16 */
+  padding-top: 10px;    /* 原来 24 */
+  padding-bottom: 6px;  /* 原来 16 */
   box-sizing: border-box;
 }
 
@@ -586,5 +587,399 @@ body {
 
 .modal-close-btn:active {
   transform: scale(0.95);
+}
+
+/* ===================== 节点内部滚动条 & Prompt / Parameters 控件 ===================== */
+
+/* 极细滚动条：默认隐藏，鼠标悬停时出现 */
+.thin-scroll {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  overscroll-behavior-x: none;
+}
+
+.thin-scroll::-webkit-scrollbar {
+  width: 3px;
+  height: 3px;
+}
+
+.thin-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thin-scroll::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 2px;
+}
+
+/* 悬停容器时才显示滚动条 */
+.thin-scroll:hover::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+}
+
+.thin-scroll:hover::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* ========== Prompt phrase 行 ========== */
+
+.phrase-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-bottom: 2px;
+}
+
+.phrase-row:last-child {
+  margin-bottom: 0;
+}
+
+/* 文本输入：作为子内容，比标题更小一号 */
+.phrase-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 9px;
+  line-height: 1.2;
+  height: 16px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #374151;
+  outline: none;
+  box-sizing: border-box;
+
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phrase-input:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 1px #bfdbfe;
+}
+
+.phrase-input:hover:not(:focus) {
+  background-color: #f9fafb;
+}
+
+/* 权重小方块：高度与 phrase-input 完全一致，更紧凑 */
+.weight-input {
+  flex: 0 0 30px;
+  width: 30px;
+  font-size: 9px;
+  line-height: 1.2;
+  height: 16px;
+  padding: 1px 2px;
+  text-align: center;
+  border-radius: 3px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #374151;
+  outline: none;
+  box-sizing: border-box;
+
+  -webkit-appearance: none;
+  -moz-appearance: textfield;
+  appearance: none;
+}
+
+.weight-input::-webkit-inner-spin-button,
+.weight-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.weight-input:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 1px #bfdbfe;
+  background: #ffffff;
+}
+
+.weight-input:hover:not(:focus) {
+  background-color: #f3f4f6;
+}
+
+/* ========== Prompt 折叠小节：Positive / Negative Prompt 头部 ========== */
+
+/* .prompt-section {
+  margin-top: 3px;
+} */
+
+.prompt-section-header {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  font-size: 8.5px;          /* 比子内容大一号，比 Input 略小 */
+  color: #4b5563;
+  padding: 0 2px;
+}
+
+.prompt-toggle-icon {
+  margin-right: 4px;
+  font-size: 8.5px;
+  color: #9ca3af;
+}
+
+.prompt-section-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 数字统计：固定宽度 + 右对齐 → 垂直严格对齐 */
+.prompt-count {
+  flex: 0 0 24px;
+  text-align: right;
+  font-size: 8.5px;
+  color: #9ca3af;
+}
+
+.prompt-section-body {
+  margin-top: 2px;
+}
+
+/* Prompt 头部禁用：不再可点击、颜色更浅 */
+.prompt-section-header.is-disabled {
+  cursor: default;
+  opacity: 0.45;
+  pointer-events: none;      /* 直接禁止点击 */
+}
+
+.prompt-section-header.is-disabled .prompt-toggle-icon {
+  color: #d1d5db;
+}
+
+/* ========== Input Images 相册 ========== */
+
+.input-images-grid {
+  display: flex;
+  flex-direction: column;   /* 最多两张图：上下排布 */
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.input-image-thumb {
+  flex: 1 1 0;
+  border-radius: 4px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  overflow: hidden;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.input-image-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Parameters 折叠头部：视觉上和 Prompt 一致 */
+.input-params-header {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  font-size: 8.5px;
+  color: #4b5563;
+  padding: 0 2px;
+  /* margin-top: 2px; */
+}
+
+.input-params-toggle-icon {
+  margin-right: 4px;
+  font-size: 8.5px;
+  color: #9ca3af;
+}
+
+.input-params-title-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 折叠体 */
+.input-params-body {
+  margin-top: 2px;
+}
+
+/* ========== 参数区（Parameters）：三列 + 两列紧凑布局 ========== */
+.input-params-title {
+  display: none;
+}
+
+.input-params-grid {
+  display: grid;
+  /* 6 等分：前 3 个字段各占 2 份 = 3 列；
+     后 2 个字段各占 3 份 = 2 列 */
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  column-gap: 6px;
+  row-gap: 2px;
+}
+
+/* 默认：每个字段占 2 份 → 一行最多 3 个 */
+.input-param-field {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 7.5px;
+  color: #4b5563;
+  grid-column: span 2;
+}
+
+/* 从第 4 个开始（height / width）：各占 3 份 → 一行 2 个铺满 */
+.input-param-field:nth-child(n + 4) {
+  grid-column: span 3;
+}
+
+
+.input-param-label {
+  white-space: nowrap;
+}
+
+.input-param-input {
+  height: 16px;
+  font-size: 8px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #374151;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.input-param-input:focus {
+  border-color: #93c5fd;
+  box-shadow: 0 0 0 1px #bfdbfe;
+}
+
+/* Parameters 头部禁用：同样效果 */
+.input-params-header.is-disabled {
+  cursor: default;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.input-params-header.is-disabled .input-params-toggle-icon {
+  color: #d1d5db;
+}
+
+/* ========== Input / Output 标题行 ========== */
+
+.io-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+}
+
+.io-header-title {
+  font-size: 9px;
+  font-weight: 600;
+  color: #4b5563;
+}
+
+.io-header-refresh {
+  cursor: pointer;
+  font-size: 10px;
+  color: #6b7280;
+  padding: 0 2px;
+}
+
+.io-header-refresh:hover {
+  color: #2563eb;
+}
+
+/* Output 标题 + ▶ 按钮容器（不再使用 footer） */
+.output-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+  font-size: 9px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.output-title {
+  user-select: none;
+}
+
+/* ▶ 小按钮，右上角 */
+.add-clip-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  opacity: 0;                             /* 默认隐藏，hover 卡片时出现 */
+  transition: opacity 0.15s ease-out, color 0.15s ease-out;
+}
+
+.node-card:hover .add-clip-btn {
+  opacity: 1;
+}
+
+.add-clip-btn:hover {
+  color: #2563eb;
+}
+
+/* ========== 节点整体可垂直拉伸 ========== */
+
+.node-card-resizable {
+  position: relative;
+}
+
+/* 右下角圆形拖拽手柄：更直观、避免和滚动条重叠 */
+.node-resize-handle {
+  position: absolute;
+  right: 6px;                 /* 向左缩一点，和右侧滚动条错开 */
+  bottom: 6px;                /* 向上缩一点，避免贴边 */
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  cursor: ns-resize;          /* 只允许上下拖拽 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+
+/* 手柄图标：三点横向 grip */
+.node-resize-handle::before {
+  content: "⇵";
+  font-size: 10px;
+
+  line-height: 1;
+  color: #6B7680;
+}
+
+.node-resize-handle:hover {
+  border-color: #cbd5f5;
+  background: #eef2ff;
+}
+
+.node-card-resizing {
+  user-select: none;
+  cursor: ns-resize;
 }
 
