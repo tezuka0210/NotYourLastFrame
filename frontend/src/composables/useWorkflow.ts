@@ -2,6 +2,8 @@
 
 import { color } from 'd3'
 import { ref, reactive } from 'vue'
+// @ts-ignore 忽略类型检查报错
+import { getPrevAgentContext } from '../lib/agentSharedState.js'
 
 // --- 1. 常量定义 ---
 const DB_API_GET_URL = '/api/trees/1'
@@ -442,35 +444,98 @@ function toggleNodeCollapse(nodeId: string) {
     showStatus('正在提交生成请求...');
 
     try {
-      let parentIds = [...selectedParentIds.value] // 复制
-      if (parentIds.length === 0 && allNodes.value.length > 0 && rootNodeId.value) {
+        // 1. 从共享工具中获取前一轮 Agent 上下文
+      if(moduleId != "AddWorkflow"&& moduleId !=  "AddText"){
+        const prevAgentContext = getPrevAgentContext();
+
+        // 2. 调用后端轻量接口（仅跑 Final Prompt Agent）
+        const promptResponse = await fetch('/api/agents/only-prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            positive_prompt: parameters.positive_prompt, // 前端新传入的 prompt
+            negative_prompt: parameters.negative_prompt,
+            prev_agent_context: prevAgentContext||'' // 共享的前一轮上下文
+          })
+        });
+
+        if (!promptResponse.ok) {
+          const errText = await promptResponse.text();
+          throw new Error(`Prompt 优化失败: ${errText}`);
+        }
+
+        const promptResult = await promptResponse.json();
+        if (promptResult.status !== 'success') {
+          throw new Error(`Prompt 优化异常: ${promptResult.message || '未知错误'}`);
+        }
+
+        const optimizedPrompt = promptResult.final_prompt;
+        showStatus('Prompt 优化完成，正在提交生成请求...');
+        console.log(`final_prompt:${optimizedPrompt}`)
+
+          let parentIds = [...selectedParentIds.value] // 复制
+        if (parentIds.length === 0 && allNodes.value.length > 0 && rootNodeId.value) {
+        }
+        // 2. 构建请求 payload（仅包含核心信息）
+        const payload = {
+          tree_id: 1,
+          node_id: nodeId, // 目标节点ID
+          title: nodeTitle,
+          parent_ids: parentIds,
+          module_id: moduleId,    // 要执行的模块
+          parameters: {
+            ...parameters,
+            positive_prompt: optimizedPrompt.positive,
+            negative_prompt: optimizedPrompt.negative,
+          }
+        };
+
+        // 3. 调用后端 create_node 接口（由后端处理生成和数据库更新）
+        const response = await fetch('/api/nodes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`请求失败: ${errText}`);
+        }
+
+         // 4. 接收后端返回的更新后的数据并刷新视图
+        const updatedTree: { nodes: DbNode[] } = await response.json();
+        processTreeData(updatedTree.nodes, '生成操作完成');
+
+      }else{
+        let parentIds = [...selectedParentIds.value] // 复制
+        if (parentIds.length === 0 && allNodes.value.length > 0 && rootNodeId.value) {
+        }
+        // 2. 构建请求 payload（仅包含核心信息）
+        const payload = {
+          tree_id: 1,
+          node_id: nodeId, // 目标节点ID
+          title: nodeTitle,
+          parent_ids: parentIds,
+          module_id: moduleId,    // 要执行的模块
+          parameters: parameters,
+        };
+        // 3. 调用后端 create_node 接口（由后端处理生成和数据库更新）
+        const response = await fetch('/api/nodes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`请求失败: ${errText}`);
+        }
+
+         // 4. 接收后端返回的更新后的数据并刷新视图
+        const updatedTree: { nodes: DbNode[] } = await response.json();
+        processTreeData(updatedTree.nodes, '生成操作完成');
+
       }
-      // 2. 构建请求 payload（仅包含核心信息）
-      const payload = {
-        tree_id: 1,
-        node_id: nodeId, // 目标节点ID
-        title: nodeTitle,
-        parent_ids: parentIds,
-        module_id: moduleId,    // 要执行的模块
-        parameters: parameters  // 前端表单参数
-      };
-
-      // 3. 调用后端 create_node 接口（由后端处理生成和数据库更新）
-      const response = await fetch('/api/nodes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`请求失败: ${errText}`);
-      }
-
-      // 4. 接收后端返回的更新后的数据并刷新视图
-      const updatedTree: { nodes: DbNode[] } = await response.json();
-      processTreeData(updatedTree.nodes, '生成操作完成');
-
 
     } catch (error: any) {
       console.error('生成请求处理失败:', error);

@@ -281,6 +281,40 @@ def update_node(node_id: str, payload: dict):
     finally:
         conn.close()
 
+
+def find_global_context(start_node_id):
+    """
+    从当前节点开始，沿着父节点链一直向上找，
+    直到找到包含 'global_context' 字段的节点。
+    """
+    current_id = start_node_id
+
+    while current_id:
+        # 1. 获取当前节点信息
+        node = get_node(current_id) # 假设你有这个函数
+        if not node:
+            break
+
+        # 2. 检查是否有全局意图
+        params = node.get('parameters', {})
+        if params and 'global_context' in params:
+            return params['global_context']
+
+        # 3. 如果是 ROOT 或 Init 节点还找不到，就返回空
+        if node.get('module_id') == 'Init':
+            return None
+
+        # 4. 继续向上找父节点
+        # (注意：如果有多父节点，通常取第一个主父节点)
+        parent_ids = node.get('parent_ids')
+        if not parent_ids:
+            break
+        current_id = parent_ids[0] # 继续回溯
+
+    return None # 这一枝上没找到
+
+
+
 def delete_node_and_descendants(node_id: str):
     """递归删除指定节点及其所有后代节点"""
     conn = get_db_connection()

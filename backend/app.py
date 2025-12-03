@@ -27,6 +27,7 @@ from agents.master_agent import master_agent_node
 from agents.knowledge_agent import knowledge_agent_node
 from agents.workflow_agent import workflow_selector_node
 from agents.prompt_agent import prompt_agent_node
+from agents.final_prompt_agent import final_prompt_agent_node 
 
 
 # --- 1. 初始化与配置 ---
@@ -336,23 +337,39 @@ def process_agent_request():
         node_id = data.get('node_id', '')
         image_url = data.get('image_url', '')
         workflow_context = data.get('workflow_context', {})
+        global_context = database.find_global_context(node_id)
 
-        # 处理 image_url 可能是数组的情况
+        # 处理 image_url 可能是数组、无效类型的情况
         if isinstance(image_url, list) and len(image_url) > 0:
             image_url = image_url[0]  # 取第一个 URL
         elif not isinstance(image_url, str):
-            image_url = ''  # 无效类型时设为空
+            image_url = ''  # 无效类型时设为空字符串
         
-        parsed_url = urllib.parse.urlparse(image_url)
-        query_params = urllib.parse.parse_qs(parsed_url.query)
-        filename = query_params.get('filename', [None])[0]  # 提取filename参数
-
-        local_dir = "/home/zhengzy/comfyui/comfyui/input"
-        local_path = os.path.join(local_dir, filename)
-        image_base64 = encode_image_to_base64(local_path)
+        # 初始化 Base64 编码结果（默认 None，表示无图片）
+        image_base64 = None
+        if image_url:  # 只有当 image_url 非空时，才解析 filename
+            parsed_url = urllib.parse.urlparse(image_url)
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            filename = query_params.get('filename', [None])[0]  # 提取 filename 参数
+            
+            # 关键判断：filename 必须非空、非 None，且文件存在
+            if filename and isinstance(filename, str):
+                local_dir = "/home/zhengzy/comfyui/comfyui/input"
+                local_path = os.path.join(local_dir, filename)  # 此时 filename 是字符串，不会报错
+                
+                # 额外判断文件是否存在，避免 FileNotFoundError
+                if os.path.exists(local_path):
+                    image_base64 = encode_image_to_base64(local_path)
+                else:
+                    print(f"警告：图片文件不存在 -> {local_path}")
+            else:
+                print("警告：未从 image_url 中提取到有效的 filename")
+        else:
+            print("提示：未传入 image_url，跳过图片处理")
             
         # 2. 准备agent所需的状态
         mock_state = {
+            "global_input":global_context,
             "user_input": user_input,
             "intent": user_input,
             "image_data": image_base64,  # 传给master_agent的图片数据（URL格式）
@@ -384,17 +401,65 @@ def process_agent_request():
             "status": "success",
             "selected_workflow": current_state.get('selected_workflow'),
             "workflow_title": current_state.get('workflow_title'),
-            "message": current_state.get('final_prompt')
+            "message": current_state.get('final_prompt'),
+            "intent": current_state.get('intent'),
+            "global_context": current_state.get('global_context'),
+            "knowledge_context": current_state.get('knowledge_context'),
+            "image_caption":current_state.get('image_caption'),
+            "style": current_state.get('style')
         })
 
     except Exception as e:
         print(f"Agent处理出错: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/api/agents/only-prompt', methods=['POST'])
+def only_prompt_agent():
+    try:
+        # 1. 获取前端传递的参数：新 prompt + 前一轮 Agent 的关键上下文
+        data = request.get_json()
+        new_positive_prompt = data.get('positive_prompt', '')  # 前端传入的新 prompt
+        new_negative_prompt = data.get('negative_prompt', '')
+        prev_agent_context = data.get('prev_agent_context', {})  # 前一轮 Agent 结果的上下文
+
+        # 2. 构造 Final Prompt Agent 所需的 state（复用前一轮上下文，覆盖新 prompt）
+        prompt_agent_state = {
+            # 前一轮 Agent 的上下文（比如 global_input、selected_workflow、knowledge_context 等）
+            "global_context": prev_agent_context.get('global_context', ''),
+            "intent": prev_agent_context.get('intent', ''),  # 用前一轮 intent 或新 prompt
+            "image_caption": prev_agent_context.get('image_caption', ''),  # 前一轮的图片描述（如果有）
+            "knowledge_context": prev_agent_context.get('knowledge_context', ''),  # 前一轮的知识上下文
+            "selected_workflow": prev_agent_context.get('selected_workflow', ''),  # 前一轮选中的工作流
+            # 新传入的 prompt（核心：覆盖 user_input，作为优化的原始输入）
+            "user_input": new_positive_prompt,
+            # 其他 Final Prompt Agent 依赖的字段（按需从 prev_agent_context 提取）
+            "style": prev_agent_context.get('style', ''),
+        }
+        print(prompt_agent_state)
+
+        # 3. 仅调用 Final Prompt Agent（不跑 Master/Knowledge/Workflow Agent）
+        prompt_result = final_prompt_agent_node(prompt_agent_state)
+        final_prompt = prompt_result.get('final_prompt', {
+            "positive": new_positive_prompt,
+            "negative": new_negative_prompt
+        })
+
+        # 4. 返回优化后的 prompt 给前端
+        return jsonify({
+            "status": "success",
+            "final_prompt": final_prompt
+        })
+
+    except Exception as e:
+        print(f"仅执行 Prompt Agent 出错: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/assets/upload', methods=['POST'])
 def upload_asset():
     """API: 接收上传文件（支持多文件），保存到 input，更新指定节点的媒体信息，返回更新后的树。"""
-    
+
     # 1. 检查文件是否存在（支持多文件）
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400

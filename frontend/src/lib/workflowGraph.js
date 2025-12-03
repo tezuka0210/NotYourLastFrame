@@ -4,6 +4,7 @@ import * as dagre from 'dagre'
 import WaveSurfer from 'wavesurfer.js'
 
 import { workflowParameters } from '@/lib/useWorkflowForm.js';
+import { setPrevAgentContext, clearPrevAgentContext } from '@/lib/agentSharedState.js';
 
 // --- link color: light gray for all edges ---
 const defaultLinkColor = '#D1D5DB' // gray-300
@@ -35,13 +36,15 @@ function getNodeCategory(node) {
     : rawAudioPath.includes('.mp3') || rawAudioPath.includes('.wav') ? 'audio' 
     : ''
   //console.log(`getNodeCategory,${mediaType}`)
-  const isAudioMedia =
-    typeof rawAudioPath === 'string' &&
-    (rawAudioPath.includes('.mp3') || rawAudioPath.includes('.wav') || rawAudioPath.includes('subfolder=audio') || mediaType === 'audio')
+  // const isAudioMedia =
+  //   typeof rawAudioPath === 'string' &&
+  //   (rawAudioPath.includes('.mp3') || rawAudioPath.includes('.wav') || rawAudioPath.includes('subfolder=audio') || mediaType === 'audio')
+  const isAudioMedia = (node.module_id=='TextToAudio')
 
-  const isVideoMedia =
-    typeof rawIVPath === 'string' &&
-    (rawIVPath.includes('.mp4') || rawIVPath.includes('subfolder=video') || mediaType === 'video')
+  // const isVideoMedia =
+  //   typeof rawIVPath === 'string' &&
+  //   (rawIVPath.includes('.mp4') || rawIVPath.includes('subfolder=video') || mediaType === 'video')
+  const isVideoMedia = (node.module_id=='TextGenerateVideo')||(node.module_id=='ImageGenerateVideo')||(node.module_id=='FLFrameToVideo')||(node.module_id=='TextToVideo')
 
   const isImageMedia = hasMedia && !isAudioMedia && !isVideoMedia
 
@@ -761,7 +764,7 @@ title.on('dblclick', (ev) => {
       if (newVal === promptText) return
       if (!d.parameters) d.parameters = {}
       if (d.module_id === 'AddText') {
-        d.parameters.text = newVal
+        d.parameters.global_context = newVal
       } else {
         d.parameters.positive_prompt = newVal
       }
@@ -806,8 +809,8 @@ title.on('dblclick', (ev) => {
         
         // 2. 保留原有文本内容
         if (!d.parameters) d.parameters = {};
-        const textContent = d.parameters.text || d.parameters.positive_prompt || '';
-        d.parameters.text = textContent; // 统一文本存储字段
+        const textContent = d.parameters.global_text || d.parameters.positive_prompt || '';
+        d.parameters.global_text = textContent; // 统一文本存储字段
         
         // 3. 初始化媒体相关字段（替代isUploadPlaceholder的作用）
         d.media = {
@@ -832,38 +835,7 @@ title.on('dblclick', (ev) => {
           .style('border-color', '#e5e7eb')
       })
 
-    // Delete button
-    /*const deleteBtn = toolbar.append('xhtml:button')
-      .text('×')
-      .style('width', '18px')
-      .style('height', '18px')
-      .style('border-radius', '999px')
-      .style('border', '1px solid #fecaca')   // red-200
-      .style('background', '#ffffff')
-      .style('font-size', '12px')
-      .style('line-height', '1')
-      .style('display', 'inline-flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('color', '#dc2626')              // red-600
-      .style('cursor', 'pointer')
-      .on('mousedown', ev => ev.stopPropagation())
-      .on('click', ev => {
-        ev.stopPropagation()
-        emit('delete-node', d.id)
-      })
-      .on('mouseenter', function () {
-        d3.select(this)
-          .style('background', '#dc2626')
-          .style('color', '#ffffff')
-          .style('border-color', '#dc2626')
-      })
-      .on('mouseleave', function () {
-        d3.select(this)
-          .style('background', '#ffffff')
-          .style('color', '#dc2626')
-          .style('border-color', '#fecaca')
-      })*/
+    
 
     addTooltip(gEl, d)
   }
@@ -1070,6 +1042,8 @@ title.on('dblclick', (ev) => {
       .on('mousedown', ev => ev.stopPropagation())
       .on('click', (ev) => {
         ev.stopPropagation();
+        //清空agent状态
+        clearPrevAgentContext();
         // 收集需要传递的内容（例如节点参数、用户输入等）
         const payload = {
           user_input: d.parameters?.positive_prompt || d.parameters?.text || '', // 节点文本内容
@@ -1089,6 +1063,18 @@ title.on('dblclick', (ev) => {
         .then(res => res.json())
         .then(data => {
           console.log('Agent处理结果:', data);
+            // 提取需要共享的关键上下文（按需选择，不用全存）
+          const agentContext = {
+            global_context: data.global_context || '',
+            intent: data.intent || '',
+            selected_workflow: data.selected_workflow || '',
+            knowledge_context: data.knowledge_context || '',
+            image_caption: data.image_caption || '',
+            style: data.style || ''
+          };
+          // 存储到共享工具中（关键步骤）
+          setPrevAgentContext(agentContext);
+          
           // 处理返回结果（例如更新节点、提示用户等）
           const rawWorkflowId = data.selected_workflow || '';
           const workflowId = rawWorkflowId.replace(".json", ''); // 移除末尾的 .json
@@ -1146,8 +1132,8 @@ title.on('dblclick', (ev) => {
    * 文本 + 音频节点（上下结构）
    */
   function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
-    const mediaUrl = d.assets.output.audio
-    const promptText = (d.parameters) ? (d.parameters.positive_prompt || d.parameters.text) : ''
+    const mediaUrl = d.assets?.output?.audio || ''; // 容错：避免 undefined 报错
+    const promptText = (d.parameters) ? (d.parameters.positive_prompt || d.parameters.text) : '';
 
     const fo = gEl.append('foreignObject')
       .attr('width', d.calculatedWidth)
@@ -1238,6 +1224,9 @@ title.on('dblclick', (ev) => {
       .style('user-select', 'none')
       .html('▶')
       .on('mousedown', ev => ev.stopPropagation())
+      // 无音频时禁用播放按钮（仅视觉提示，不影响布局）
+      .style('opacity', mediaUrl ? '1' : '0.5')
+      .style('cursor', mediaUrl ? 'pointer' : 'not-allowed')
 
     const waveformWrapper = audioRow.append('xhtml:div')
       .style('flex-grow', '1')
@@ -1246,92 +1235,104 @@ title.on('dblclick', (ev) => {
       .style('justify-content', 'center')
       .style('min-width', '0')
 
+    // 【核心修改1】无音频时仅保留空白的波形容器，无背景色、无提示文本
     const waveformDiv = waveformWrapper.append('xhtml:div')
       .style('width', '100%')
       .style('height', '20px')
 
+    // 【核心修改2】无音频时隐藏时间显示（或留空，二选一）
     const timeDisplay = waveformWrapper.append('xhtml:div')
       .style('font-size', '10px')
       .style('color', '#6b7280')
-      .text('0:00 / --:--')
+      .text(mediaUrl ? '0:00 / --:--' : '') // 无音频时显示空字符串
 
-    const wavesurfer = WaveSurfer.create({
-      container: waveformDiv.node(),
-      waveColor: '#9ca3af',
-      progressColor: NODE_COLORS.audio,
-      height: 20,
-      barHeight: 2,
-      barWidth: 2,
-      barGap: 1,
-      barRadius: 2,
-      url: mediaUrl,
-    })
+    // 【核心修改3】分情况处理 WaveSurfer 初始化（仅有音频时初始化）
+    let wavesurfer = null;
+    if (mediaUrl) {
+      wavesurfer = WaveSurfer.create({
+        container: waveformDiv.node(),
+        waveColor: '#9ca3af',
+        progressColor: NODE_COLORS.audio,
+        height: 20,
+        barHeight: 2,
+        barWidth: 2,
+        barGap: 1,
+        barRadius: 2,
+        url: mediaUrl,
+      })
 
-    wavesurfer.on('ready', (duration) => {
-      timeDisplay.text(`0:00 / ${formatTime(duration)}`)
-    })
+      wavesurfer.on('ready', (duration) => {
+        timeDisplay.text(`0:00 / ${formatTime(duration)}`)
+      })
 
-    wavesurfer.on('timeupdate', (currentTime) => {
-      timeDisplay.text(`${formatTime(currentTime)} / ${formatTime(wavesurfer.getDuration())}`)
-    })
+      wavesurfer.on('timeupdate', (currentTime) => {
+        timeDisplay.text(`${formatTime(currentTime)} / ${formatTime(wavesurfer.getDuration())}`)
+      })
 
-    wavesurfer.on('finish', () => {
-      playBtn.html('▶')
-    })
-
-    wavesurfer.on('error', (err) => {
-      console.error('WaveSurfer error:', err)
-      waveformDiv.html(`<span style="color:red; font-size:10px;">Audio error: ${err}</span>`)
-    })
-
-    playBtn.on('click', ev => {
-      ev.stopPropagation()
-      wavesurfer.playPause()
-      if (wavesurfer.isPlaying()) {
-        playBtn.html('⏸')
-      } else {
+      wavesurfer.on('finish', () => {
         playBtn.html('▶')
-      }
-    })
+      })
 
+      wavesurfer.on('error', (err) => {
+        console.error('WaveSurfer error:', err)
+        waveformDiv.html(`<span style="color:red; font-size:10px;">Audio error: ${err}</span>`)
+      })
+
+      playBtn.on('click', ev => {
+        ev.stopPropagation()
+        wavesurfer.playPause()
+        if (wavesurfer.isPlaying()) {
+          playBtn.html('⏸')
+        } else {
+          playBtn.html('▶')
+        }
+      })
+    } else {
+      // 无音频时，播放按钮点击无响应
+      playBtn.on('click', ev => {
+        ev.stopPropagation()
+      })
+    }
+
+    // 【核心修改4】销毁时判断 wavesurfer 是否存在
     fo.on('remove', () => {
-      wavesurfer.destroy()
+      if (wavesurfer) wavesurfer.destroy()
     })
 
-    const dots = card.append('xhtml:div')
-      .attr('class', 'dots-container')
-      .style('position', 'absolute')
-      .style('top', '50px')
-      .style('right', '4px')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('opacity', '0')
-      .style('transition', 'opacity 0.15s ease-in-out')
-      .style('z-index', '10')
+    // const dots = card.append('xhtml:div')
+    //   .attr('class', 'dots-container')
+    //   .style('position', 'absolute')
+    //   .style('top', '50px')
+    //   .style('right', '4px')
+    //   .style('display', 'flex')
+    //   .style('flex-direction', 'column')
+    //   .style('opacity', '0')
+    //   .style('transition', 'opacity 0.15s ease-in-out')
+    //   .style('z-index', '10')
 
-    const buttonTypes = ['audio']
-    buttonTypes.forEach((key, idx) => {
-      const info = workflowTypes[key]
-      if (!info) return
-      dots.append('xhtml:button')
-        .style('background-color', info.color)
-        .style('width', '16px')
-        .style('height', '16px')
-        .style('border-radius', '50%')
-        .style('border', 'none')
-        .style('padding', '0')
-        .style('cursor', 'pointer')
-        .style('transition', 'transform 0.15s ease-in-out')
-        .style('margin-top', idx > 0 ? '4px' : '0')
-        .attr('title', `Start ${info.type} workflow`)
-        .on('mouseenter', function () { d3.select(this).style('transform', 'scale(1.25)') })
-        .on('mouseleave', function () { d3.select(this).style('transform', 'scale(1)') })
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('click', ev => {
-          ev.stopPropagation()
-          emit('open-generation', d, info.defaultModuleId, info.type)
-        })
-    })
+    // const buttonTypes = ['audio']
+    // buttonTypes.forEach((key, idx) => {
+    //   const info = workflowTypes[key]
+    //   if (!info) return
+    //   dots.append('xhtml:button')
+    //     .style('background-color', info.color)
+    //     .style('width', '16px')
+    //     .style('height', '16px')
+    //     .style('border-radius', '50%')
+    //     .style('border', 'none')
+    //     .style('padding', '0')
+    //     .style('cursor', 'pointer')
+    //     .style('transition', 'transform 0.15s ease-in-out')
+    //     .style('margin-top', idx > 0 ? '4px' : '0')
+    //     .attr('title', `Start ${info.type} workflow`)
+    //     .on('mouseenter', function () { d3.select(this).style('transform', 'scale(1.25)') })
+    //     .on('mouseleave', function () { d3.select(this).style('transform', 'scale(1)') })
+    //     .on('mousedown', ev => ev.stopPropagation())
+    //     .on('click', ev => {
+    //       ev.stopPropagation()
+    //       emit('open-generation', d, info.defaultModuleId, info.type)
+    //     })
+    // })
 
     const footer = card.append('xhtml:div')
       .style('display', 'flex')
@@ -1360,161 +1361,14 @@ title.on('dblclick', (ev) => {
         emit('add-clip', d, 'audio')
       })
 
-    addTooltip(gEl, d)
-  }
-
-  /**
-   * 左右 IO 卡：左输入，右输出（图片 / 视频 / 文本）
-   */
-  function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
-    /************ 记得改改改改改改**********/
-    const assets = d.assets.output || {};
-    const allMedia = assets.images || [];
-    // 获取图片和视频列表，如果不存在则为空数组
-    const videoUrls = allMedia.filter(url => 
-      url.includes('.mp4') || 
-      url.includes('.mov') || 
-      url.includes('.webm') || 
-      url.includes('subfolder=video')
-    );
-
-    // 筛选出所有图片URL（排除已识别为视频的）
-    const imageUrls = allMedia.filter(url => !videoUrls.includes(url));
-    // 判断是否有任何媒体可以显示
-    const hasMedia = !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0)
-    console.log(`renderIONode ${hasMedia}`)
-    const mediaUrl = hasMedia ? d.assets.output.images : ''
-    const rawIVPath = hasMedia ? d.assets.output.images[0] : ''
-    const mediaType = d.assets.output && d.assets.output.type
-    
-    const isVideo =(rawIVPath.includes('.mp4') || rawIVPath.includes('subfolder=video') )
-    console.log(`renderIONode ${rawIVPath}           ${isVideo}`)
-    
-    const isImage = hasMedia && !isVideo && mediaType !== 'audio'
-    const canAddToStitch = hasMedia && (isImage || isVideo)
-
-    const promptText = (d.parameters) ? (d.parameters.positive_prompt || d.parameters.text) : null
-    const hasPrompt = typeof promptText === 'string' && promptText.trim() !== ''
-
-    const fo = gEl.append('foreignObject')
-      .attr('width', d.calculatedWidth)
-      .attr('height', d.calculatedHeight)
-      .attr('x', -d.calculatedWidth / 2)
-      .attr('y', -d.calculatedHeight / 2)
-      .style('overflow', 'visible')
-
-    const card = fo.append('xhtml:div')
-      .attr('class', 'node-card')
-      .style('width', '100%')
-      .style('height', '100%')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('border-width', '2px')
-      .style('border-radius', '8px')
-      .style('border-color', getNodeBorderColor(d))
-      .style('position', 'relative')
-      .style('cursor', 'pointer')
-      .style('background-color', '#ffffff')
-      .style('user-select', 'none')
-      .style('-webkit-user-select', 'none')
-
-    if (selectedIds.includes(d.id)) {
-      const selColor = getSelectionColor(d)
-      card.style('box-shadow', `0 0 0 2px ${selColor}`)
-    } else {
-      card.style('box-shadow', 'none')
-    }
-    addRightClickMenu(card, d, emit);
-    card.on('click', ev => {
-      if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
-      ev.stopPropagation()
-      const selected = new Set(selectedIds)
-      const on = selected.has(d.id)
-      if (on) selected.delete(d.id)
-      else if (selected.size < 2) selected.add(d.id)
-      const selColor = getSelectionColor(d)
-      card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
-      emit('update:selectedIds', Array.from(selected))
-    })
-
-    card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
-      .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
-
-    buildHeader(card, d)
-
-    card.append('xhtml:style').text(`
-      .thin-scroll {
-        overflow-y: overlay; /* 尝试覆盖模式，部分浏览器支持 */
-        scrollbar-gutter: stable; /* 现代浏览器：预留空间防止跳动 */
-      }
-      /* 定义滚动条宽度 */
-      .thin-scroll::-webkit-scrollbar {
-        width: 3px; /* 极细 */
-        height: 3px;
-      }
-      /* 轨道透明 */
-      .thin-scroll::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      /* 滑块默认透明 (不可见) */
-      .thin-scroll::-webkit-scrollbar-thumb {
-        background: transparent;
-        border-radius: 2px;
-      }
-      /* 只有当鼠标悬停在容器上时，滑块才变色 */
-      .thin-scroll:hover::-webkit-scrollbar-thumb {
-        background: #d1d5db; /* 浅灰色 */
-      }
-      .thin-scroll:hover::-webkit-scrollbar-thumb:hover {
-        background: #9ca3af; /* 深一点的灰色 */
-      }
-    `)
-
-    const body = card.append('xhtml:div')
-      .style('flex', '1 1 auto')
-      .style('min-height', '0')
-      .style('display', 'flex')
-      .style('padding', '4px 4px')
-
-    // --- 左侧主容器 ---
-    const left = body.append('xhtml:div')
-      .attr('class', 'thin-scroll nodrag') // 应用上面定义的 class
-      .style('flex', '1 1 0')
-      .style('min-width', '0')
-      .style('padding', '2px 4px')
-      .style('border-right', '1px solid #e5e7eb')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('gap', '6px')
-      // 关键：这里不再通过 JS 切换 overflow，而是交给 CSS 处理
-      // 这里的 overflow-y 最好设为 auto，让 CSS 的样式去控制显隐
-      .style('overflow-y', 'auto') 
-
-    // 【注意】删除了之前写的 card.on('mouseenter.scroll') ... 代码
-    // 因为现在通过 CSS 的 :hover 伪类控制颜色，不再需要 JS 介入布局，从而消除了抖动。
-
-    // 1. 顶部 Header (不变)
-    const headerRow = left.append('xhtml:div')
-      .style('display', 'flex')
-      .style('justify-content', 'space-between')
-      .style('align-items', 'center')
-      .style('margin-bottom', '0px')
-
-    headerRow.append('xhtml:div')
-      .style('font-size', '9px')
-      .style('font-weight', '600')
-      .style('color', '#6b7280')
-      .style('user-select', 'none')
-      .text('Input')
-
-    headerRow.append('xhtml:div')
+      footer.append('xhtml:div')
       .style('cursor', 'pointer')
       .style('font-size', '10px')
       .style('color', '#6b7280')
       .style('padding', '0 2px')
       .text('↻')
       .attr('title', 'Apply & Regenerate')
-      .on('mouseenter', function() { d3.select(this).style('color', '#2563eb') })
+      .on('mouseenter', function() { d3.select(this).style('color', NODE_COLORS.audio) })
       .on('mouseleave', function() { d3.select(this).style('color', '#6b7280') })
       .on('mousedown', ev => ev.stopPropagation())
       .on('click', (ev) => {
@@ -1531,152 +1385,603 @@ title.on('dblclick', (ev) => {
         emit('regenerate-node', d.id,d.module_id, currentParams)
       })
 
-    // --- 核心渲染函数：增加了 fontSize 参数 ---
-    // titleSize: 标题字号, inputSize: 内容字号
-    const createNestedField = (container, label, key, value, type, isFullWidth = true, titleSize = '7px', inputSize = '8.5px') => {
-        const wrapper = container.append('xhtml:div')
-            .style('display', 'flex')
-            .style('flex-direction', 'column')
-            .style('gap', '1px')
-            
-        if (isFullWidth) {
-            wrapper.style('width', '100%')
-        } else {
-            wrapper
-                .style('flex', '1 1 28%') 
-                .style('min-width', '0')
-        }
+    addTooltip(gEl, d)
+  }
 
-        // 标题
-        wrapper.append('xhtml:div')
-            .style('font-size', titleSize)
-            .style('color', '#292f38ff')
-            .style('white-space', 'nowrap')
-            .style('overflow', 'hidden')
-            .style('text-overflow', 'ellipsis')
-            .style('line-height', '1.3') 
-            .style('margin', '0')
-            .style('padding-left','1px')
-            .text(label)
+  /**
+ * 左右 IO 卡：左输入，右输出（图片 / 视频 / 文本）
+ */
+function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
+  /************ 记得改改改改改改**********/
+  const assets = d.assets.output || {};
+  const allMedia = assets.images || [];
+  // 获取图片和视频列表，如果不存在则为空数组
+  const videoUrls = allMedia.filter(url => 
+    url.includes('.mp4') || 
+    url.includes('.mov') || 
+    url.includes('.webm') || 
+    url.includes('subfolder=video')
+  );
 
-        const contentDiv = wrapper.append('xhtml:div')
-            .style('width', '100%')
-            // 注意：对于 Textarea (Prompt)，不要设 line-height: 0，否则可能切断文字
-            // 只有小参数才设为 0 以消除间距
-            .style('line-height', isFullWidth ? 'normal' : '0')
+  // 筛选出所有图片URL（排除已识别为视频的）
+  const imageUrls = allMedia.filter(url => !videoUrls.includes(url));
+  // 判断是否有任何媒体可以显示
+  const hasMedia = !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0)
+  console.log(`renderIONode ${hasMedia}`)
+  const mediaUrl = hasMedia ? d.assets.output.images : ''
+  const rawIVPath = hasMedia ? d.assets.output.images[0] : ''
+  const mediaType = d.assets.output && d.assets.output.type
+  
+  const isVideo =(rawIVPath.includes('.mp4') || rawIVPath.includes('subfolder=video') )
+  console.log(`renderIONode ${rawIVPath}           ${isVideo}`)
+  
+  const isImage = hasMedia && !isVideo && mediaType !== 'audio'
+  const canAddToStitch = hasMedia && (isImage || isVideo)
 
-        let input;
-        if (type === 'textarea') {
-            const hasContent = value && String(value).trim().length > 0
-            let rowCount = 1
-            if (hasContent) {
-                rowCount = (key === 'positive_prompt') ? 3 : 2
-            }
+  const promptText = (d.parameters) ? (d.parameters.positive_prompt || d.parameters.text) : null
+  const hasPrompt = typeof promptText === 'string' && promptText.trim() !== ''
 
-            input = contentDiv.append('xhtml:textarea')
-                .attr('rows', rowCount)
-                .style('resize', 'none')
-                .text(value)
-        } else {
-            input = contentDiv.append('xhtml:input')
-                .attr('type', type === 'number' ? 'number' : 'text')
-                .attr('value', value)
-        }
+  const fo = gEl.append('foreignObject')
+    .attr('width', d.calculatedWidth)
+    .attr('height', d.calculatedHeight)
+    .attr('x', -d.calculatedWidth / 2)
+    .attr('y', -d.calculatedHeight / 2)
+    .style('overflow', 'visible')
 
-        // 【关键逻辑】差异化上边距
-        // 如果是 FullWidth (Prompt)，margin-top 为 0 (保持原样)
-        // 如果是其他小参数，margin-top 为 -2px (向上拉紧)
-        const marginTopVal = isFullWidth ? '2px' : '1px'
+  const card = fo.append('xhtml:div')
+    .attr('class', 'node-card')
+    .style('width', '100%')
+    .style('height', '100%')
+    .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('border-width', '2px')
+    .style('border-radius', '8px')
+    .style('border-color', getNodeBorderColor(d))
+    .style('position', 'relative')
+    .style('cursor', 'pointer')
+    .style('background-color', '#ffffff')
+    .style('user-select', 'none')
+    .style('-webkit-user-select', 'none')
+
+  if (selectedIds.includes(d.id)) {
+    const selColor = getSelectionColor(d)
+    card.style('box-shadow', `0 0 0 2px ${selColor}`)
+  } else {
+    card.style('box-shadow', 'none')
+  }
+  addRightClickMenu(card, d, emit);
+  card.on('click', ev => {
+    if (ev.target && ev.target.closest && ev.target.closest('button, img, video, input')) return
+    ev.stopPropagation()
+    const selected = new Set(selectedIds)
+    const on = selected.has(d.id)
+    if (on) selected.delete(d.id)
+    else if (selected.size < 2) selected.add(d.id)
+    const selColor = getSelectionColor(d)
+    card.style('box-shadow', on ? 'none' : `0 0 0 2px ${selColor}`)
+    emit('update:selectedIds', Array.from(selected))
+  })
+
+  card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
+    .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
+
+  buildHeader(card, d)
+
+  card.append('xhtml:style').text(`
+    .thin-scroll {
+      overflow-y: overlay; /* 尝试覆盖模式，部分浏览器支持 */
+      scrollbar-gutter: stable; /* 现代浏览器：预留空间防止跳动 */
+    }
+    /* 定义滚动条宽度 */
+    .thin-scroll::-webkit-scrollbar {
+      width: 3px; /* 极细 */
+      height: 3px;
+    }
+    /* 轨道透明 */
+    .thin-scroll::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    /* 滑块默认透明 (不可见) */
+    .thin-scroll::-webkit-scrollbar-thumb {
+      background: transparent;
+      border-radius: 2px;
+    }
+    /* 只有当鼠标悬停在容器上时，滑块才变色 */
+    .thin-scroll:hover::-webkit-scrollbar-thumb {
+      background: #d1d5db; /* 浅灰色 */
+    }
+    .thin-scroll:hover::-webkit-scrollbar-thumb:hover {
+      background: #9ca3af; /* 深一点的灰色 */
+    }
+    /* 权重数字输入框样式（小方块） */
+    .weight-input {
+      color: #747b88ff !important;
+      width: 10px !important; /* 固定宽度，小方块样式 */
+      height: 10px !important;
+      text-align: center !important;
+      padding: 0 !important;
+      font-size: 5px !important;
+      border: 1px solid #e5e7eb !important;
+      border-radius: 2px !important;
+      background: #f9fafb !important;
+      /* 核心：移除所有浏览器的上下箭头 */
+      -webkit-appearance: none !important; /* Chrome, Safari, Edge */
+      -moz-appearance: textfield !important; /* Firefox */
+      appearance: none !important; /* 标准语法 */
+    }
+    /* 兼容Firefox：确保没有箭头 */
+    .weight-input::-webkit-inner-spin-button,
+    .weight-input::-webkit-outer-spin-button {
+      -webkit-appearance: none !important;
+      margin: 0 !important;
+    }
+    .weight-input:focus {
+      outline: none !important;
+      border-color: var(--card-border-color);
+      background: #ffffff !important;
+    }
+    .phrase-input {
+      color: #747b88ff !important;
+      flex: 1 !important;
+      font-size: 6px !important;
+      padding: 2px 2px !important;
+      border: 1px solid #e5e7eb !important;
+      border-radius: 2px !important;
+      outline: none !important;
+    }
+    .phrase-input:focus {
+      border-color: var(--card-border-color);
+    }
+  `)
+
+  const body = card.append('xhtml:div')
+    .style('flex', '1 1 auto')
+    .style('min-height', '0')
+    .style('display', 'flex')
+    .style('padding', '4px 4px')
+
+  // --- 左侧主容器 ---
+  const left = body.append('xhtml:div')
+    .attr('class', 'thin-scroll nodrag') // 应用上面定义的 class
+    .style('flex', '1 1 0')
+    .style('min-width', '0')
+    .style('padding', '2px 4px')
+    .style('border-right', '1px solid #e5e7eb')
+    .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('gap', '1px')
+    .style('overflow-y', 'auto') 
+
+  // 1. 顶部 Header (不变)
+  const headerRow = left.append('xhtml:div')
+    .style('display', 'flex')
+    .style('justify-content', 'space-between')
+    .style('align-items', 'center')
+    .style('margin-bottom', '4px')
+
+  headerRow.append('xhtml:div')
+    .style('font-size', '9px')
+    .style('font-weight', '600')
+    .style('color', '#6b7280')
+    .style('user-select', 'none')
+    .text('Input')
+
+  headerRow.append('xhtml:div')
+    .style('cursor', 'pointer')
+    .style('font-size', '10px')
+    .style('color', '#6b7280')
+    .style('padding', '0 2px')
+    .text('↻')
+    .attr('title', 'Apply & Regenerate')
+    .on('mouseenter', function() { d3.select(this).style('color', '#2563eb') })
+    .on('mouseleave', function() { d3.select(this).style('color', '#6b7280') })
+    .on('mousedown', ev => ev.stopPropagation())
+    .on('click', (ev) => {
+      ev.stopPropagation()
+      const currentParams = {}
+
+      // 1. 收集 Positive Prompt（短语+权重 → 目标格式）
+      // 直接用之前的 params.positive_prompt（已在 updatePositivePrompt 中实时更新）
+      if (params.positive_prompt) {
+        // 解析后重新组织成 "(关键词:权重), (关键词:权重)" 格式
+        const positivePhrases = parsePrompt(params.positive_prompt);
+        const positiveStr = positivePhrases
+          .filter(p => p.text.trim())
+          .map(p => `(${p.text.trim()}:${p.weight.toFixed(1)})`)
+          .join(', ');
+        currentParams.positive_prompt = positiveStr;
+      }
+
+      // 2. 收集 Negative Prompt（和 Positive 格式一致）
+      if (params.negative_prompt) {
+        const negativePhrases = parsePrompt(params.negative_prompt);
+        const negativeStr = negativePhrases
+          .filter(p => p.text.trim())
+          .map(p => `(${p.text.trim()}:${p.weight.toFixed(1)})`)
+          .join(', ');
+        currentParams.negative_prompt = negativeStr;
+      }
+
+      // 3. 收集其他小参数（seed、steps 等，仍用 .node-input 类）
+      left.selectAll('.node-input').each(function() {
+          const el = d3.select(this)
+          const key = el.attr('data-key')
+          let val = el.property('value')
+          if (el.attr('type') === 'number') val = Number(val)
+          // 排除 positive_prompt/negative_prompt（已单独处理），避免重复
+          if (key && key !== 'positive_prompt' && key !== 'negative_prompt') {
+            currentParams[key] = val;
+          }
+      })
+
+    // 打印验证：确认格式正确
+    console.log('currentParams:', currentParams, d.module_id);
+    // 输出示例：
+    // positive_prompt: "(black and white spotted dog:1.6), (glossy coat:1.2), ..."
+    // negative_prompt: "(bad anatomy:1.2), (blurry:1.3), ..."
+
+    emit('regenerate-node', d.id, d.module_id, currentParams)
+  })
+
+  // --- 核心渲染函数：增加了 fontSize 参数 ---
+  // titleSize: 标题字号, inputSize: 内容字号
+  const createNestedField = (container, label, key, value, type, isFullWidth = true, titleSize = '7px', inputSize = '8.5px') => {
+      const wrapper = container.append('xhtml:div')
+          .style('display', 'flex')
+          .style('flex-direction', 'column')
+          .style('gap', '1px')
+          
+      if (isFullWidth) {
+          wrapper.style('width', '100%')
+      } else {
+          wrapper
+              .style('flex', '1 1 28%') 
+              .style('min-width', '0')
+      }
+
+      // 标题
+      wrapper.append('xhtml:div')
+          .style('font-size', titleSize)
+          .style('color', '#292f38ff')
+          .style('white-space', 'nowrap')
+          .style('overflow', 'hidden')
+          .style('text-overflow', 'ellipsis')
+          .style('line-height', '1.3') 
+          .style('margin', '0')
+          .style('padding-left','1px')
+          .text(label)
+
+      const contentDiv = wrapper.append('xhtml:div')
+          .style('width', '100%')
+          // 注意：对于 Textarea (Prompt)，不要设 line-height: 0，否则可能切断文字
+          // 只有小参数才设为 0 以消除间距
+          .style('line-height', isFullWidth ? 'normal' : '0')
+
+      let input;
+      if (type === 'textarea') {
+          const hasContent = value && String(value).trim().length > 0
+          let rowCount = 1
+          if (hasContent) {
+              rowCount = (key === 'positive_prompt') ? 3 : 2
+          }
+
+          input = contentDiv.append('xhtml:textarea')
+              .attr('rows', rowCount)
+              .style('resize', 'none')
+              .text(value)
+      } else {
+          input = contentDiv.append('xhtml:input')
+              .attr('type', type === 'number' ? 'number' : 'text')
+              .attr('value', value)
+      }
+
+      // 【关键逻辑】差异化上边距
+      // 如果是 FullWidth (Prompt)，margin-top 为 0 (保持原样)
+      // 如果是其他小参数，margin-top 为 -2px (向上拉紧)
+      const marginTopVal = isFullWidth ? '2px' : '1px'
         
 
-        input.attr('class', 'node-input thin-scroll')
-             .attr('data-key', key)
-             .style('width', '100%')
-             .style('display', 'block')
-             .style('font-size', inputSize)
-             .style('line-height', '1.3')
-             .style('color', '#747b88ff')
-             .style('background', 'transparent')
-             .style('border', '1px solid transparent')
-             .style('border-radius', '2px')
-             .style('padding', '0px 2px')
-             .style('outline', 'none')
-             .style('font-family', 'inherit')
-             .style('margin-top', marginTopVal) // 应用差异化边距
-             .on('mousedown', ev => ev.stopPropagation())
-             .on('focus', function() { 
-                  d3.select(this).style('background', '#ffffff').style('border-color', '#e5e7eb') 
-             })
-             .on('blur', function() { 
-                  d3.select(this).style('background', 'transparent').style('border-color', 'transparent') 
-             })
-             .on('mouseenter', function() {
-                  if (document.activeElement !== this) d3.select(this).style('background', '#f9fafb')
-              })
-             .on('mouseleave', function() {
-                   if (document.activeElement !== this) d3.select(this).style('background', 'transparent')
-              })
-    }
+      input.attr('class', 'node-input thin-scroll')
+           .attr('data-key', key)
+           .style('width', '100%')
+           .style('display', 'block')
+           .style('font-size', inputSize)
+           .style('line-height', '1.3')
+           .style('color', '#747b88ff')
+           .style('background', 'transparent')
+           .style('border', '1px solid transparent')
+           .style('border-radius', '2px')
+           .style('padding', '0px 2px')
+           .style('outline', 'none')
+           .style('font-family', 'inherit')
+           .style('margin-top', marginTopVal) // 应用差异化边距
+           .on('mousedown', ev => ev.stopPropagation())
+           .on('focus', function() { 
+                d3.select(this).style('background', '#ffffff').style('border-color', '#e5e7eb') 
+           })
+           .on('blur', function() { 
+                d3.select(this).style('background', 'transparent').style('border-color', 'transparent') 
+           })
+           .on('mouseenter', function() {
+                if (document.activeElement !== this) d3.select(this).style('background', '#f9fafb')
+            })
+           .on('mouseleave', function() {
+                 if (document.activeElement !== this) d3.select(this).style('background', 'transparent')
+            })
+  }
 
-    // --- 数据准备 ---
-    const params = d.parameters || {}
-    const excluded = ['positive_prompt', 'negative_prompt', 'text', 'seed']
-    const smallParams = Object.entries(params).filter(([k]) => !excluded.includes(k))
+  // --- 数据准备 ---
+  const params = d.parameters || {}
+  const excluded = ['positive_prompt', 'negative_prompt', 'text', 'seed']
+  const smallParams = Object.entries(params).filter(([k]) => !excluded.includes(k))
 
-    // 2. Prompt 模块 (保持原来的标准字号: 标题7px, 内容8.5px)
-    const posVal = params.positive_prompt || params.text || ''
-    createNestedField(left, 'Positive Prompt', 'positive_prompt', posVal, 'textarea', true, '7px', '7px')
+  // ==============================================
+  // 【重点修改：Positive Prompt 改为数字输入框（小方块）】
+  // ==============================================
+  // 1. Positive Prompt 小标题（独立div，放大样式）
+  left.append('xhtml:div')
+    .style('font-size', '7px')
+    .style('color', '#292f38ff')
+    .style('white-space', 'nowrap')
+    .style('text-overflow', 'ellipsis')
+    .style('line-height', '1.3') 
+    .style('margin', '0')
+    .style('padding-left','1px')
+    .text('Positive Prompt');
 
-    // 3. Negative Prompt 模块 (保持原来的标准字号)
-    const negVal = params.negative_prompt || ''
-    createNestedField(left, 'Negative Prompt', 'negative_prompt', negVal, 'textarea', true, '7px', '7px')
+  // 2. 解析 Prompt 为短语+权重
+  const parsePrompt = (prompt) => {
+    if (!prompt) return [];
+    const trimmedPrompt = prompt.trim();
+    const phrases = [];
+    //console.log(`prompt: ${prompt}`)
 
-    // 4. 其他参数的大容器
-    if (smallParams.length > 0) {
-        const othersContainer = left.append('xhtml:div')
-            .attr('class', 'others-params-container')
-            .style('display', 'flex')
-            .style('flex-wrap', 'wrap')
-            .style('gap', '3px') // 稍微调小间距
-            .style('padding-top', '6px')
-            .style('border-top', '1px dashed #f3f4f6')
+    // 统一处理：先去掉所有括号，再按逗号拆分，最后提取关键词和权重
+    // 步骤1：去掉所有括号（不管是单个还是多个）
+    const noBracketsPrompt = trimmedPrompt.replace(/[()]/g, '');
+    // 步骤2：按逗号拆分（处理多个短语的情况）
+    const splitItems = noBracketsPrompt.split(',').map(item => item.trim()).filter(item => item);
+    //console.log(`splitItems: ${splitItems}`)
+    // 遍历每个拆分后的项，提取关键词和权重
+    splitItems.forEach(item => {
+      if (item.includes(':')) {
+        // 情况：包含权重（关键词:权重）
+        const [text, weightStr] = item.split(':').map(part => part.trim());
+        //console.log(`text: ${text}`)
+        phrases.push({
+          text: text, // 纯关键词（去掉:权重）
+          weight: parseFloat(weightStr) || 1.0 // 提取权重
+        });
+      } else {
+        // 情况：没有权重，默认权重1.0
+        phrases.push({
+          text: item,
+          weight: 1.0
+        });
+      }
+    });
 
-        smallParams.forEach(([key, val]) => {
-            const isNum = typeof val === 'number'
-            const labelName = key.replace(/_/g, ' ')
-            
-            // 【改动5】在这里传入更小的字号
-            // 标题: 6px (极小)
-            // 内容: 7.5px (紧凑)
-            createNestedField(othersContainer, labelName, key, val, isNum ? 'number' : 'text', false, '6.5px', '6.5px')
-        })
-    }
+    // 过滤空文本
+    return phrases.filter(p => p.text.trim());
+};
 
+  // 3. 更新 Prompt 数据
+  const updatePrompt = (phrases) => {
+    const updatedPrompt = phrases
+      .filter(p => p.text.trim())
+      .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`) // 用|分隔文本和权重
+      .join(', ');
+    params.positive_prompt = updatedPrompt;
+    emit('update-node-parameters', d.id, { ...params });
+  };
 
-    const right = body.append('xhtml:div')
-      .style('flex', '1 1 0')
-      .style('min-width', '0')
-      .style('padding', '2px 4px')
-      .style('display', 'flex')
-      .style('flex-direction', 'column') // 垂直排列多个媒体
-      .style('align-items', 'center')     // 水平居中
-      .style('justify-content', 'flex-start') // 从顶部开始排列
-      .style('position', 'relative')
-      .style('overflow-y', 'auto')        // 当内容超出时显示垂直滚动条
-      .style('max-height', '100%');       // 限制最大高度，防止溢出
+  // 4. 权重控制容器（放在左侧栏，占满宽度）
+  const positivePromptContainer = left.append('xhtml:div')
+    .style('width', '100%')
+    .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('gap', '6px')
+    .style('padding', '4px 0');
 
-    right.append('xhtml:div')
-      .style('position', 'absolute')
-      .style('top', '2px')
-      .style('left', '4px')
-      .style('font-size', '9px')
-      .style('font-weight', '600')
-      .style('color', '#6b7280')
-      .style('user-select', 'none')
-      .style('z-index', '1') // 确保标签在媒体之上
-      .text('Output')
+  // 5. 渲染短语+数字输入框（小方块）
+  const renderPositivePhraseRows = () => {
+    positivePromptContainer.selectAll('*').remove();
+    const phrases = parsePrompt(params.positive_prompt || params.text || '');
 
-    // --- 【修改点 3：循环渲染所有媒体项】 ---
+    phrases.forEach((phrase, index) => {
+      // 每行布局：文本输入 + 权重标签 + 数字输入框 + 删除按钮
+      const row = positivePromptContainer.append('xhtml:div')
+        .attr('class', 'phrase-row')
+        .style('display', 'flex')
+        .style('align-items', 'center')
+        .style('gap', '1px') // 缩小间距，更紧凑
+        .style('min-height', '8px');
+
+      // 短语文本输入（占满剩余宽度）
+      row.append('xhtml:input')
+        .attr('class', 'phrase-input')
+        .attr('type', 'text')
+        .attr('value', phrase.text)
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('input', function() {
+          phrase.text = this.value;
+          updatePrompt(phrases);
+        });
+
+      // 【核心修改：权重拉杆 → 数字输入框（小方块）】
+      row.append('xhtml:input')
+        .attr('class', 'weight-input') // 应用小方块样式
+        .attr('type', 'number')
+        .attr('min', '0.0')
+        .attr('max', '1.9')
+        .attr('step', '0.1')
+        .attr('value', phrase.weight.toFixed(1))
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('input', function() {
+          // 限制输入范围和精度
+          let val = parseFloat(this.value);
+          if (isNaN(val)) val = 1.0;
+          val = Math.min(1.9, Math.max(0.0, val)); // 0.1-3.0 范围
+          this.value = val.toFixed(1); // 保留1位小数
+          phrase.weight = val;
+          updatePrompt(phrases);
+        });
+
+    });
+
+    // 添加新短语按钮
+    // positivePromptContainer.append('xhtml:button')
+    //   .text('+ Add Phrase')
+    //   .style('padding', '3px 6px')
+    //   .style('font-size', '8px')
+    //   .style('color', '#2563eb')
+    //   .style('background', 'transparent')
+    //   .style('border', '1px dashed #93c5fd')
+    //   .style('border-radius', '2px')
+    //   .style('cursor', 'pointer')
+    //   .on('mousedown', ev => ev.stopPropagation())
+    //   .on('click', function(ev) {
+    //     ev.stopPropagation();
+    //     const phrases = parsePrompt(params.positive_prompt || '');
+    //     phrases.push({ text: '', weight: 1.0 });
+    //     updatePrompt(phrases);
+    //     renderPhraseRows();
+    //     // 自动聚焦
+    //     setTimeout(() => {
+    //       positivePromptContainer.selectAll('.phrase-input').last().node().focus();
+    //     }, 0);
+    //   });
+  };
+
+  // 初始渲染 Positive Prompt 权重控制
+  renderPositivePhraseRows();
+
+   // ==============================================
+  // 【新增：Negative Prompt 改为和 Positive 一样的形式】
+  // ==============================================
+  // 1. Negative Prompt 小标题（和 Positive 样式一致）
+  left.append('xhtml:div')
+    .style('font-size', '7px')
+    .style('color', '#292f38ff')
+    .style('white-space', 'nowrap')
+    .style('text-overflow', 'ellipsis')
+    .style('line-height', '1.3') 
+    .style('margin', '0')
+    .style('padding-left','1px')
+    .text('Negative Prompt');
+
+  // 2. 更新 Negative Prompt 数据（专属函数，保存到 negative_prompt 字段）
+  const updateNegativePrompt = (phrases) => {
+    const updatedPrompt = phrases
+      .filter(p => p.text.trim())
+      .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`) // 和 Positive 统一保存格式
+      .join(', ');
+    params.negative_prompt = updatedPrompt;
+    emit('update-node-parameters', d.id, { ...params });
+  };
+
+  // 3. Negative 专属容器（和 Positive 布局一致）
+  const negativePromptContainer = left.append('xhtml:div')
+    .style('width', '100%')
+    .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('gap', '6px')
+    .style('padding', '4px 0');
+
+  // 4. 渲染 Negative 短语+权重小方块（复用 Positive 逻辑）
+  const renderNegativePhraseRows = () => {
+    negativePromptContainer.selectAll('*').remove();
+    // 解析 Negative 专属字段
+    const phrases = parsePrompt(params.negative_prompt || '');
+
+    phrases.forEach((phrase, index) => {
+      const row = negativePromptContainer.append('xhtml:div')
+        .attr('class', 'phrase-row')
+        .style('display', 'flex')
+        .style('align-items', 'center')
+        .style('gap', '1px')
+        .style('min-height', '8px');
+
+      // 纯文本输入框
+      row.append('xhtml:input')
+        .attr('class', 'phrase-input')
+        .attr('type', 'text')
+        .attr('value', phrase.text)
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('input', function() {
+          phrase.text = this.value;
+          updateNegativePrompt(phrases);
+        });
+
+      // 独立权重小方块
+      row.append('xhtml:input')
+        .attr('class', 'weight-input')
+        .attr('type', 'number')
+        .attr('min', '0.0')
+        .attr('max', '1.9')
+        .attr('step', '0.1')
+        .attr('value', phrase.weight.toFixed(1))
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('input', function() {
+          let val = parseFloat(this.value);
+          if (isNaN(val)) val = 1.0;
+          val = Math.min(1.9, Math.max(0.0, val));
+          this.value = val.toFixed(1);
+          phrase.weight = val;
+          updateNegativePrompt(phrases);
+        });
+
+    });
+  };
+
+  // 初始渲染 Negative Prompt
+  renderNegativePhraseRows();
+
+  // 4. 其他参数的大容器
+  if (smallParams.length > 0) {
+      const othersContainer = left.append('xhtml:div')
+          .attr('class', 'others-params-container')
+          .style('display', 'flex')
+          .style('flex-wrap', 'wrap')
+          .style('gap', '3px') // 稍微调小间距
+          .style('padding-top', '6px')
+          .style('border-top', '1px dashed #f3f4f6')
+
+      smallParams.forEach(([key, val]) => {
+          const isNum = typeof val === 'number'
+          const labelName = key.replace(/_/g, ' ')
+          
+          // 【改动5】在这里传入更小的字号
+          // 标题: 6px (极小)
+          // 内容: 7.5px (紧凑)
+          createNestedField(othersContainer, labelName, key, val, isNum ? 'number' : 'text', false, '6.5px', '6.5px')
+      })
+  }
+
+  const right = body.append('xhtml:div')
+    .style('flex', '1 1 0')
+    .style('min-width', '0')
+    .style('padding', '2px 4px')
+    .style('display', 'flex')
+    .style('flex-direction', 'column') // 垂直排列多个媒体
+    .style('align-items', 'center')     // 水平居中
+    .style('justify-content', 'flex-start') // 从顶部开始排列
+    .style('position', 'relative')
+    .style('overflow-y', 'auto')        // 当内容超出时显示垂直滚动条
+    .style('max-height', '100%');       // 限制最大高度，防止溢出
+
+  right.append('xhtml:div')
+    .style('position', 'absolute')
+    .style('top', '2px')
+    .style('left', '4px')
+    .style('font-size', '9px')
+    .style('font-weight', '600')
+    .style('color', '#6b7280')
+    .style('user-select', 'none')
+    .style('z-index', '1') // 确保标签在媒体之上
+    .text('Output')
+
+  // --- 【修改点 3：循环渲染所有媒体项】 ---
   if (videoUrls.length > 0) {
     const videoContainer = right.append('xhtml:div')
       .style('width', '100%')
@@ -1733,80 +2038,38 @@ title.on('dblclick', (ev) => {
     })
   }
 
+  const footer = card.append('xhtml:div')
+    .style('display', 'flex')
+    .style('justify-content', 'flex-end')
+    .style('padding', '2px')
 
-    const dots = right.append('xhtml:div')
-      .attr('class', 'dots-container')
-      .style('position', 'absolute')
-      .style('top', '4px')
-      .style('right', '4px')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
+  if (canAddToStitch) {
+    const selColor = isVideo ? NODE_COLORS.video : NODE_COLORS.image
+    footer.append('xhtml:button')
+      .attr('class', 'add-clip-btn')
+      .html('▶')
       .style('opacity', '0')
       .style('transition', 'opacity 0.15s ease-in-out')
-      .style('z-index', '10')
-
-    const buttonTypes = (d.module_id === 'AddText') ? ['red', 'yellow', 'green', 'audio'] : ['red', 'yellow', 'green']
-    buttonTypes.forEach((key, idx) => {
-      const info = workflowTypes[key]
-      if (!info) {
-        console.warn(`WorkflowType "${key}" is not defined.`)
-        return
-      }
-      dots.append('xhtml:button')
-        .style('background-color', info.color)
-        .style('width', '16px')
-        .style('height', '16px')
-        .style('border-radius', '50%')
-        .style('border', 'none')
-        .style('padding', '0')
-        .style('cursor', 'pointer')
-        .style('transition', 'transform 0.15s ease-in-out')
-        .style('margin-top', idx > 0 ? '4px' : '0')
-        .attr('title', `Start ${info.type} workflow`)
-        .on('mouseenter', function () { d3.select(this).style('transform', 'scale(1.25)') })
-        .on('mouseleave', function () { d3.select(this).style('transform', 'scale(1)') })
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('click', ev => {
-          ev.stopPropagation()
-          emit('open-generation', d, info.defaultModuleId, info.type)
-        })
-    })
-
-    const footer = card.append('xhtml:div')
+      .style('width', '20px')
+      .style('height', '20px')
       .style('display', 'flex')
-      .style('justify-content', 'flex-end')
-      .style('padding', '2px')
-
-    if (canAddToStitch) {
-      const selColor = isVideo ? NODE_COLORS.video : NODE_COLORS.image
-      footer.append('xhtml:button')
-        .attr('class', 'add-clip-btn')
-        .html('▶')
-        .style('opacity', '0')
-        .style('transition', 'opacity 0.15s ease-in-out')
-        .style('width', '20px')
-        .style('height', '20px')
-        .style('display', 'flex')
-        .style('align-items', 'center')
-        .style('justify-content', 'center')
-        .style('color', selColor)
-        .style('font-size', '1.125rem')
-        .style('border', 'none')
-        .style('background-color', 'transparent')
-        .style('padding', '0')
-        .style('cursor', 'pointer')
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('click', ev => {
-          ev.stopPropagation()
-          emit('add-clip', d, isVideo ? 'video' : 'image')
-        })
-    }
-
-    addTooltip(gEl, d)
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('color', selColor)
+      .style('font-size', '1.125rem')
+      .style('border', 'none')
+      .style('background-color', 'transparent')
+      .style('padding', '0')
+      .style('cursor', 'pointer')
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('click', ev => {
+        ev.stopPropagation()
+        emit('add-clip', d, isVideo ? 'video' : 'image')
+      })
   }
 
+  addTooltip(gEl, d)
+}
   // 实现AddWorkflow卡片渲染（复用TextFull布局，替换图标）
 function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     const fo = gEl.append('foreignObject')
@@ -2016,10 +2279,42 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
         .then(data => {
           console.log('Agent处理结果:', data);
           // 处理返回结果（例如更新节点、提示用户等）
-          alert(`AI助手推荐工作流: ${data.selected_workflow}`);
+          const rawWorkflowId = data.selected_workflow || '';
+          const workflowId = rawWorkflowId.replace(".json", ''); // 移除末尾的 .json
+          const workflow_title = data.workflow_title;
+          import('@/lib/useWorkflowForm.js').then(({ workflowParameters }) => {
+          if (!workflowParameters) {
+            console.error('workflowParameters 未正确导入');
+            return;
+          }
+
+          // 1. 获取对应工作流的参数定义数组（如 [{id: 'positive_prompt', ...}, ...]）
+          const paramDefinitions = workflowParameters[workflowId] || [];
+          
+          // 2. 将参数定义数组转换为 { id: defaultValue } 格式的对象
+          const defaultParams = paramDefinitions.reduce((obj, param) => {
+            obj[param.id] = param.defaultValue; // 以参数id为键，默认值为值
+            return obj;
+          }, {});
+          
+          // 3. 整合参数（agent返回的prompt覆盖默认值）
+          const updatedParams = {
+            ...defaultParams, // 基础默认参数
+            positive_prompt: data.message.positive || defaultParams.positive_prompt || '', // 优先使用agent返回的positive
+            negative_prompt: data.message.negative || defaultParams.negative_prompt || '', // 优先使用agent返回的negative
+          };
+          console.log('转换后的参数格式:', updatedParams);
+
+
+          // 4. 更新节点参数并触发刷新
+          d.parameters = updatedParams;
+          // 5. 调用App.vue的handleRefreshNode刷新节点
+          emit('refresh-node', d.id, workflowId, d.parameters,workflow_title);
+          });
         })
+        
         .catch(err => console.error('调用Agent失败:', err));
-      })
+        })
       .on('mouseenter', function () {
         d3.select(this)
           .style('background', '#6b7280')

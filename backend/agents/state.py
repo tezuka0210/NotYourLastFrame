@@ -2,6 +2,7 @@ from typing import TypedDict, List, Optional, Dict, Any
 
 class AgentState(TypedDict):
     # --- Inputs ---
+    global_context: str
     user_input: str
     image_data: Optional[str]  # Base64 string or URL
 
