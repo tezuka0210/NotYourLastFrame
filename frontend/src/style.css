@@ -968,7 +968,6 @@ body {
 .node-resize-handle::before {
   content: "⇵";
   font-size: 10px;
-
   line-height: 1;
   color: #6B7680;
 }
