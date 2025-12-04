@@ -151,14 +151,19 @@ export function getVisibleNodesAndLinks(allNodes) {
 
 /** 粗略推断当前“卡片类型” */
 function inferCardType(node) {
+  const mid = (node.module_id || '').trim()
 
-  if (node.module_id === 'Init') return 'init'
-  if (node.module_id === 'AddText') return 'textFull'
-  if (node.module_id === 'TextImage'|| node.module_id === 'Upload') return 'TextImage'
-  if (node.module_id === 'AddWorkflow') return 'AddWorkflow'
-  if (node.module_id === 'TextToAudio' ) return 'audio'
+  if (mid === 'Init') return 'init'
+  if (mid === 'AddText') return 'textFull'
+  if (mid === 'TextImage' || mid === 'Upload') return 'TextImage'
+
+  // ⭐ 关键：兼容所有 AddWorkflow* 形态的新旧节点
+  if (mid === 'AddWorkflow' || mid.startsWith('AddWorkflow')) return 'AddWorkflow'
+
+  if (mid === 'TextToAudio') return 'audio'
   return 'io'
 }
+
 
 /** 仅更新“选中”样式（按类型着色阴影） */
 export function updateSelectionStyles(svgElement, selectedIds) {
@@ -252,11 +257,22 @@ export function renderTree(
   svgElement,
   allNodesData,
   selectedIds,
-  emit,           // (eventName, ...args) => void
-  workflowTypes,   // 仍然用于右上角启动按钮的颜色
+  emit,
+  workflowTypes,
   viewState = null
 ) {
   const wrapper = d3.select(svgElement)
+
+  // ⭐ 优先用外部传进来的 viewState；如果没有，就从 d3 的内部 zoom 状态恢复
+  let savedView = viewState
+  if (!savedView) {
+    const prev = wrapper.property('__zoom')      // d3.zoom 内部记录
+    if (prev) {
+      savedView = { k: prev.k, x: prev.x, y: prev.y }
+    }
+  }
+
+  // 清空旧内容，但不要动 wrapper 本身（保留 __zoom 属性）
   wrapper.html('')
 
   const { visibleNodes, visibleLinks } = getVisibleNodesAndLinks(allNodesData)
@@ -374,24 +390,24 @@ export function renderTree(
       const target = ev.target;
       return !(target && target.closest && target.closest('foreignObject'));
     });
+
   svg.call(zoom);
 
-  // 原初始缩放逻辑（仅在无保存状态时执行）
-  if (!viewState) {
+  // ⭐ 优先恢复旧视图；没有旧视图时才做一次自适应缩放
+  if (savedView) {
+    svg.call(
+      zoom.transform,
+      d3.zoomIdentity
+        .translate(savedView.x, savedView.y)
+        .scale(savedView.k)
+    );
+  } else {
     const graphWidth = g.graph().width || width;
     const graphHeight = g.graph().height || height;
     const s = Math.min(1, Math.min(width / graphWidth, height / graphHeight) * 0.9);
     const tx = (width - graphWidth * s) / 2;
     const ty = (height - graphHeight * s) / 2;
     svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(s));
-  } else {
-    // 恢复保存的视图状态
-    svg.call(
-      zoom.transform,
-      d3.zoomIdentity
-        .translate(viewState.x, viewState.y)
-        .scale(viewState.k)
-    );
   }
 
   // 背景点击：取消选择
@@ -2067,276 +2083,259 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   addTooltip(gEl, d);
 }
 
-// 实现AddWorkflow卡片渲染（复用TextFull布局，替换图标）
+// 实现AddWorkflow卡片渲染（左右分割 + 头部按钮，无footer）
 function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
-    const fo = gEl.append('foreignObject')
-      .attr('width', d.calculatedWidth)
-      .attr('height', d.calculatedHeight)
-      .attr('x', -d.calculatedWidth / 2)
-      .attr('y', -d.calculatedHeight / 2)
-      .style('overflow', 'visible')
+  const fo = gEl.append('foreignObject')
+    .attr('width', d.calculatedWidth)
+    .attr('height', d.calculatedHeight)
+    .attr('x', -d.calculatedWidth / 2)
+    .attr('y', -d.calculatedHeight / 2)
+    .style('overflow', 'visible')
 
-    const card = fo.append('xhtml:div')
-      .attr('class', 'node-card node-card-resizable')
-      .attr('data-node-category', getNodeCategory(d))
-      .style('width', '100%')
-      .style('height', '100%')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('border-width', '2px')
-      .style('border-radius', '8px')
-      .style('border-color', getNodeBorderColor(d))
-      .style('position', 'relative')
-      .style('cursor', 'pointer')
-      .style('background-color', '#ffffff')
-      .style('user-select', 'none')
-      .style('-webkit-user-select', 'none')
+  const card = fo.append('xhtml:div')
+    .attr('class', 'node-card node-card-resizable')
+    .attr('data-node-category', getNodeCategory(d))
+    .style('width', '100%')
+    .style('height', '100%')
+    .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('border-width', '2px')
+    .style('border-radius', '8px')
+    .style('border-color', getNodeBorderColor(d))
+    .style('position', 'relative')
+    .style('cursor', 'pointer')
+    .style('background-color', '#ffffff')
+    .style('user-select', 'none')
+    .style('-webkit-user-select', 'none')
 
-    setCardSelected(card, d, selectedIds.includes(d.id))
+  setCardSelected(card, d, selectedIds.includes(d.id))
 
-    card.on('click', ev => {
-      if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
+  card.on('click', ev => {
+    if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
+    ev.stopPropagation()
+    const selected = new Set(selectedIds)
+    const on = selected.has(d.id)
+    if (on) selected.delete(d.id)
+    else if (selected.size < 2) selected.add(d.id)
+    setCardSelected(card, d, !on)
+    emit('update:selectedIds', Array.from(selected))
+  })
+
+  card.on('mouseenter', () =>
+    card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1')
+  ).on('mouseleave', () =>
+    card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0')
+  )
+
+  buildHeader(card, d)
+  addRightClickMenu(card, d, emit)
+
+  // --- 核心布局：左右分栏 ---
+  const body = card.append('xhtml:div')
+    .style('flex', '1 1 auto')
+    .style('min-height', '0')
+    .style('display', 'flex')
+    .style('flex-direction', 'row') // 左右排列
+
+  // === 左侧：Input 区 ===
+  const left = body.append('xhtml:div')
+    .attr('class', 'io-panel io-panel--left')
+
+  // Input Header
+  const inputHeader = left.append('xhtml:div')
+    .attr('class', 'io-header')
+
+  inputHeader.append('xhtml:span')
+    .attr('class', 'io-title')
+    .text('Input')
+
+  // Input / Output 下方的虚线
+  left.append('xhtml:div')
+    .attr('class', 'io-divider')
+
+  const promptText = d.parameters?.text || d.parameters?.positive_prompt || ''
+  const textArea = left.append('xhtml:textarea')
+    .attr('class', 'thin-scroll')
+    .style('flex', '1')
+    .style('width', '100%')
+    .style('padding', '6px')
+    .style('font-size', '10px')
+    .style('color', '#374151')
+    .style('border', 'none')
+    .style('resize', 'none')
+    .style('outline', 'none')
+    .style('background', 'transparent')
+    .property('value', promptText)
+    .on('mousedown', ev => ev.stopPropagation())
+    .on('blur', function () {
+      const newVal = d3.select(this).property('value')
+      if (newVal !== promptText) {
+        if (!d.parameters) d.parameters = {}
+        d.parameters.text = newVal
+        emit('update-node-parameters', d.id, d.parameters)
+      }
+    })
+
+  // === 右侧：Output 区 ===
+  const right = body.append('xhtml:div')
+    .attr('class', 'io-panel io-panel--right')
+
+  const outputHeader = right.append('xhtml:div')
+    .attr('class', 'io-header')
+
+  outputHeader.append('xhtml:span')
+    .attr('class', 'io-title')
+    .text('Output')
+
+  // ⭐ 把 Agent “A” 按钮放到 Output 标题右侧
+  const AgentBtn = outputHeader.append('xhtml:button')
+    .text('A')
+    .style('margin-left', 'auto')   // 把按钮推到最右
+    .style('width', '18px')
+    .style('height', '18px')
+    .style('border-radius', '999px')
+    .style('border', '1px solid #e5e7eb')
+    .style('background', '#ffffff')
+    .style('font-size', '12px')
+    .style('line-height', '1')
+    .style('display', 'inline-flex')
+    .style('align-items', 'center')
+    .style('justify-content', 'center')
+    .style('color', '#6b7280')
+    .style('cursor', 'pointer')
+    .on('mousedown', ev => ev.stopPropagation())
+    .on('click', (ev) => {
       ev.stopPropagation()
-      const selected = new Set(selectedIds)
-      const on = selected.has(d.id)
-      if (on) selected.delete(d.id)
-      else if (selected.size < 2) selected.add(d.id)
-      setCardSelected(card, d, !on)
-      emit('update:selectedIds', Array.from(selected))
-    })
 
-    card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
-      .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
-
-    buildHeader(card, d)
-    addRightClickMenu(card, d, emit);
-    // --- 核心布局：左右分栏 ---
-    const body = card.append('xhtml:div')
-      .style('flex', '1 1 auto')
-      .style('min-height', '0')
-      .style('display', 'flex')
-      .style('flex-direction', 'row') // 左右排列
-
-    // === 左侧：纯文本编辑器 ===
-    const left = body.append('xhtml:div')
-      .attr('class', 'io-panel io-panel--left');
-      
-    // ===== Input Header =====
-    const inputHeader = left.append('xhtml:div')
-      .attr('class', 'io-header');
-
-    inputHeader.append('xhtml:span')
-      .attr('class', 'io-title')
-      .text('Input');
-
-    // 如果有 tag / 模式小标签，就继续往 inputHeader 里 append
-    // inputHeader.append('xhtml:span').attr('class', 'io-tag').text('...');
-
-    // 标题下方那条虚线（左右要对齐就这一条）
-    left.append('xhtml:div')
-      .attr('class', 'io-divider');
-    
-    // 这里复用你之前改好的 textarea 逻辑
-    const promptText = d.parameters?.text || d.parameters?.positive_prompt || ''
-    const textArea = left.append('xhtml:textarea')
-        .attr('class', 'thin-scroll')
-        .style('flex', '1').style('width', '100%').style('padding', '6px')
-        .style('font-size', '10px').style('color', '#374151')
-        .style('border', 'none').style('resize', 'none').style('outline', 'none')
-        .style('background', 'transparent')
-        .property('value', promptText)
-        .on('mousedown', ev => ev.stopPropagation())
-        
-        .on('blur', function() {
-            const newVal = d3.select(this).property('value')
-            if (newVal !== promptText) {
-              if (!d.parameters) d.parameters = {}
-              d.parameters.text = newVal
-              emit('update-node-parameters', d.id, d.parameters)
-            }
-        })
-
-    // === 右侧：媒体显示区 ===
-    const right = body.append('xhtml:div')
-      .attr('class', 'io-panel io-panel--right');
-
-    // ===== Output Header =====
-    const outputHeader = right.append('xhtml:div')
-      .attr('class', 'io-header');
-
-    outputHeader.append('xhtml:span')
-      .attr('class', 'io-title')
-      .text('Output');
-
-    // 右侧标题下方同样一条虚线
-    right.append('xhtml:div')
-      .attr('class', 'io-divider');
-
-    // 判断是否有媒体内容
-    const hasMedia = !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0)
-    const mediaUrl = hasMedia ? d.assets.input.images : ''
-    console.log(`rendetAddWorkflowNode ${mediaUrl}`)
-
-    // 创建上传容器（居中显示）
-    const uploadContainer = right.append('xhtml:div')
-      .style('width', '80%')
-      .style('height', '80%')
-      .style('display', 'flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('border', hasMedia ? 'none' : '2px dashed #d1d5db') // 无媒体时显示虚线边框
-      .style('border-radius', '4px')
-      .style('cursor', 'pointer')
-      .style('transition', 'border-color 0.2s')
-      .on('mouseenter', function() {
-        if (!hasMedia) d3.select(this).style('border-color', '#9ca3af')
-      })
-      .on('mouseleave', function() {
-        if (!hasMedia) d3.select(this).style('border-color', '#d1d5db')
-      })
-
-    // 如果有媒体，显示媒体内容
-    if (hasMedia) {
-      uploadContainer.append('xhtml:img')
-        .attr('src', mediaUrl)
-        .style('max-width', '100%')
-        .style('max-height', '100%')
-        .style('object-fit', 'contain') // 保持比例缩放
-    } else {
-      // 无媒体时显示加号和提示文字
-      const uploadContent = uploadContainer.append('xhtml:div')
-        .style('text-align', 'center')
-        .style('color', '#6b7280')
-
-      // 加号图标（使用大号字体模拟）
-      uploadContent.append('xhtml:div')
-        .style('font-size', '24px')
-        .style('line-height', '1')
-        .style('margin-bottom', '4px')
-        .text('+')
-
-      
-    }
-
-    // 添加实际的文件上传输入（隐藏但保持功能）
-    const fileInput = uploadContainer.append('xhtml:input')
-      .attr('type', 'file')
-      .attr('accept', 'image/*')
-      .style('position', 'absolute')
-      .style('top', '0')
-      .style('left', '0')
-      .style('width', '100%')
-      .style('height', '100%')
-      .style('opacity', '0')
-      .style('cursor', 'pointer')
-      .on('change', function() {
-        const file = this.files?.[0]
-        if (file) {
-          emit('upload-media', d.id, file)
-          this.value = ''
+      const payload = {
+        user_input: d.parameters?.positive_prompt || d.parameters?.text || '',
+        node_id: d.id,
+        workflow_context: {
+          current_workflow: d.module_id,
+          parent_nodes: d.originalParents || []
         }
+      }
+
+      fetch('/api/agents/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
       })
-
-    // 点击容器时触发文件输入的点击事件
-    uploadContainer.on('click', () => {
-      fileInput.node().click()
-    })
-    
-    const toolbar = card.append('xhtml:div')
-      .style('flex-shrink', '0')
-      .style('padding', '4px 2px')
-      .style('display', 'flex')
-      .style('justify-content', 'flex-end')
-      .style('gap', '4px')
-
-
-    // Agent button
-    const AgentBtn = toolbar.append('xhtml:button')
-      .text('A')
-      .style('width', '18px')
-      .style('height', '18px')
-      .style('border-radius', '999px')
-      .style('border', '1px solid #e5e7eb')
-      .style('background', '#ffffff')
-      .style('font-size', '12px')
-      .style('line-height', '1')
-      .style('display', 'inline-flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('color', '#6b7280')
-      .style('cursor', 'pointer')
-      .on('mousedown', ev => ev.stopPropagation())
-      .on('click', (ev) => {
-        ev.stopPropagation();
-        // 收集需要传递的内容（例如节点参数、用户输入等）
-        const payload = {
-          user_input: d.parameters?.positive_prompt || d.parameters?.text || '', // 节点文本内容
-          node_id: d.id, // 当前节点ID
-          workflow_context: {
-            current_workflow: d.module_id, // 当前使用的工作流
-            parent_nodes: d.originalParents || [] // 父节点信息
-          }
-        };
-        // 发送请求到后端agent接口
-        fetch('/api/agents/process', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
         .then(res => res.json())
         .then(data => {
-          console.log('Agent处理结果:', data);
-          // 处理返回结果（例如更新节点、提示用户等）
-          const rawWorkflowId = data.selected_workflow || '';
-          const workflowId = rawWorkflowId.replace(".json", ''); // 移除末尾的 .json
-          const workflow_title = data.workflow_title;
+          console.log('Agent处理结果:', data)
+          const rawWorkflowId = data.selected_workflow || ''
+          const workflowId = rawWorkflowId.replace('.json', '')
+          const workflow_title = data.workflow_title
+
           import('@/lib/useWorkflowForm.js').then(({ workflowParameters }) => {
-          if (!workflowParameters) {
-            console.error('workflowParameters 未正确导入');
-            return;
-          }
+            if (!workflowParameters) {
+              console.error('workflowParameters 未正确导入')
+              return
+            }
 
-          // 1. 获取对应工作流的参数定义数组（如 [{id: 'positive_prompt', ...}, ...]）
-          const paramDefinitions = workflowParameters[workflowId] || [];
-          
-          // 2. 将参数定义数组转换为 { id: defaultValue } 格式的对象
-          const defaultParams = paramDefinitions.reduce((obj, param) => {
-            obj[param.id] = param.defaultValue; // 以参数id为键，默认值为值
-            return obj;
-          }, {});
-          
-          // 3. 整合参数（agent返回的prompt覆盖默认值）
-          const updatedParams = {
-            ...defaultParams, // 基础默认参数
-            positive_prompt: data.message.positive || defaultParams.positive_prompt || '', // 优先使用agent返回的positive
-            negative_prompt: data.message.negative || defaultParams.negative_prompt || '', // 优先使用agent返回的negative
-          };
-          console.log('转换后的参数格式:', updatedParams);
+            const paramDefinitions = workflowParameters[workflowId] || []
+            const defaultParams = paramDefinitions.reduce((obj, param) => {
+              obj[param.id] = param.defaultValue
+              return obj
+            }, {})
 
+            const updatedParams = {
+              ...defaultParams,
+              positive_prompt: data.message.positive || defaultParams.positive_prompt || '',
+              negative_prompt: data.message.negative || defaultParams.negative_prompt || ''
+            }
 
-          // 4. 更新节点参数并触发刷新
-          d.parameters = updatedParams;
-          // 5. 调用App.vue的handleRefreshNode刷新节点
-          emit('refresh-node', d.id, workflowId, d.parameters,workflow_title);
-          });
+            console.log('转换后的参数格式:', updatedParams)
+            d.parameters = updatedParams
+            emit('refresh-node', d.id, workflowId, d.parameters, workflow_title)
+          })
         })
-        
-        .catch(err => console.error('调用Agent失败:', err));
-        })
-      .on('mouseenter', function () {
-        d3.select(this)
-          .style('background', '#6b7280')
-          .style('color', '#ffffff')
-          .style('border-color', '#4b5563')
-      })
-      .on('mouseleave', function () {
-        d3.select(this)
-          .style('background', '#ffffff')
-          .style('color', '#6b7280')
-          .style('border-color', '#e5e7eb')
-      })
-    addTooltip(gEl, d)
+        .catch(err => console.error('调用Agent失败:', err))
+    })
+    .on('mouseenter', function () {
+      d3.select(this)
+        .style('background', '#6b7280')
+        .style('color', '#ffffff')
+        .style('border-color', '#4b5563')
+    })
+    .on('mouseleave', function () {
+      d3.select(this)
+        .style('background', '#ffffff')
+        .style('color', '#6b7280')
+        .style('border-color', '#e5e7eb')
+    })
+
+  // Output 标题下方虚线
+  right.append('xhtml:div')
+    .attr('class', 'io-divider')
+
+  // 判断是否有媒体内容（AddWorkflow 一般是占位图，可留空或保持你原逻辑）
+  const hasMedia =
+    !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0)
+  const mediaUrl = hasMedia ? d.assets.input?.images : ''
+  console.log(`renderAddWorkflowNode media:`, mediaUrl)
+
+  const uploadContainer = right.append('xhtml:div')
+    .style('width', '80%')
+    .style('height', '80%')
+    .style('display', 'flex')
+    .style('align-items', 'center')
+    .style('justify-content', 'center')
+    .style('border', hasMedia ? 'none' : '2px dashed #d1d5db')
+    .style('border-radius', '4px')
+    .style('cursor', 'pointer')
+    .style('transition', 'border-color 0.2s')
+    .on('mouseenter', function () {
+      if (!hasMedia) d3.select(this).style('border-color', '#9ca3af')
+    })
+    .on('mouseleave', function () {
+      if (!hasMedia) d3.select(this).style('border-color', '#d1d5db')
+    })
+
+  if (hasMedia) {
+    uploadContainer.append('xhtml:img')
+      .attr('src', mediaUrl)
+      .style('max-width', '100%')
+      .style('max-height', '100%')
+      .style('object-fit', 'contain')
+  } else {
+    const uploadContent = uploadContainer.append('xhtml:div')
+      .style('text-align', 'center')
+      .style('color', '#6b7280')
+
+    uploadContent.append('xhtml:div')
+      .style('font-size', '24px')
+      .style('line-height', '1')
+      .style('margin-bottom', '4px')
+      .text('+')
   }
+
+  const fileInput = uploadContainer.append('xhtml:input')
+    .attr('type', 'file')
+    .attr('accept', 'image/*')
+    .style('position', 'absolute')
+    .style('top', '0')
+    .style('left', '0')
+    .style('width', '100%')
+    .style('height', '100%')
+    .style('opacity', '0')
+    .style('cursor', 'pointer')
+    .on('change', function () {
+      const file = this.files?.[0]
+      if (file) {
+        emit('upload-media', d.id, file)
+        this.value = ''
+      }
+    })
+
+  uploadContainer.on('click', () => {
+    fileInput.node().click()
+  })
+
+  addTooltip(gEl, d)
+}
+
 
   // --- 主循环：根据类型分发渲染 ---
   nodeSel.each(function (d) {
