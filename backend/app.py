@@ -37,7 +37,7 @@ app = Flask(__name__, template_folder='templates')
 CORS(app)
 
 # --- 模式开关 ----
-APP_MODE = os.getenv('APP_MODE', 'local') 
+APP_MODE = os.getenv('APP_MODE', 'server') 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 print(f"--- 应用程序正在以 {APP_MODE.upper()} 模式运行 ---")
 
@@ -498,14 +498,7 @@ def upload_asset():
 
         # 按文件类型分类添加
         for asset_url, ext in asset_urls:
-            if ext in ['.jpg', '.jpeg', '.png', '.gif']:
-                updated_assets['input']['images'] = updated_assets['input'].get('images', []) + [asset_url]
-            elif ext in ['.mp4', '.mov', '.avi', '.webm']:
-                updated_assets['input']['videos'] = updated_assets['input'].get('videos', []) + [asset_url]
-            elif ext in ['.mp3', '.wav', '.flac', '.ogg']:
-                updated_assets['input']['audio'] = updated_assets['input'].get('audio', []) + [asset_url]
-            else:
-                updated_assets['input']['images'] = updated_assets['input'].get('images', []) + [asset_url]
+            updated_assets['input']['images'] = updated_assets['input'].get('images', []) + [asset_url]
 
         print(updated_assets)
         # 7. 更新数据库
@@ -617,18 +610,16 @@ def create_node():
         if module_id_from_frontend == 'AddText':
             print(">>> 检测到 AddText 模块，仅保存文本节点到数据库。")
             # "AddText" 模块没有 ComfyUI 操作，它只保存节点
-            new_node_id = database.add_node(
+            database.update_node(
                 node_id=node_id,
-                tree_id=tree_id,
-                parent_ids=parent_ids,
-                module_id=module_id_from_frontend,
-                parameters=parameters,
-                title='AddText',
-                assets={}, # 没有媒体资源
-                status='completed'
+                payload={
+                    "title": node_title,
+                    "module_id": module_id_from_frontend,
+                    "assets": {},
+                    "parameters": parameters,
+                    "status":'completed'
+                }
             )
-            if not new_node_id:
-                raise Exception("保存 AddText 节点到数据库失败。")
 
             # 返回更新后的树
             updated_tree = database.get_tree_as_json(tree_id)
@@ -637,18 +628,17 @@ def create_node():
         if module_id_from_frontend == 'AddWorkflow':
             print(">>> 检测到 AddWorkflow 模块，仅保存文本节点到数据库。")
             # "AddWorkflow" 模块没有 ComfyUI 操作，它只保存节点
-            new_node_id = database.add_node(
-                node_id=node_id,
-                tree_id=tree_id,
-                parent_ids=parent_ids,
-                module_id=module_id_from_frontend,
-                parameters=parameters,
-                title='AddWorkflow',
-                assets={}, # 没有媒体资源
-                status='completed'
+            database.add_node(
+                node_id=update_id,
+                payload={
+                    "title": node_title,
+                    "module_id": module_id_from_frontend,
+                    "assets": {},
+                    "parameters": parameters,
+                    "status":'completed'
+                }
             )
-            if not new_node_id:
-                raise Exception("保存 AddWorkflow 节点到数据库失败。")
+            
 
         try:
             # 尝试从 output/video 或 output 随机选择一个文件
@@ -786,18 +776,16 @@ def create_node():
         if final_module_id == 'AddText':
             print(">>> 检测到 AddText 模块，仅保存文本节点到数据库。")
             # "AddText" 模块没有 ComfyUI 操作，它只保存节点
-            new_node_id = database.add_node(
+            database.update_node(
                 node_id=node_id,
-                tree_id=tree_id,
-                parent_ids=parent_ids,
-                module_id=final_module_id,
-                parameters=parameters,
-                title='AddText',
-                assets={}, # 没有媒体资源
-                status='completed'
+                payload={
+                    "title": node_title,
+                    "module_id": module_id_from_frontend,
+                    "assets": {},
+                    "parameters": parameters,
+                    "status":'completed'
+                }
             )
-            if not new_node_id:
-                raise Exception("保存 AddText 节点到数据库失败。")
 
             # 返回更新后的树
             updated_tree = database.get_tree_as_json(tree_id)
@@ -806,18 +794,17 @@ def create_node():
         if final_module_id == 'AddWorkflow':
             print(">>> 检测到 AddWorkflow 模块，仅保存文本节点到数据库。")
             # "AddWorkflow" 模块没有 ComfyUI 操作，它只保存节点
-            new_node_id = database.add_node(
+            database.update_node(
                 node_id=node_id,
-                tree_id=tree_id,
-                parent_ids=parent_ids,
-                module_id=final_module_id,
-                parameters=parameters,
-                title='AddWorkflow',
-                assets={}, # 没有媒体资源
-                status='completed'
+                payload={
+                    "title": node_title,
+                    "module_id": module_id_from_frontend,
+                    "assets": {},
+                    "parameters": parameters,
+                    "status":'completed'
+                }
             )
-            if not new_node_id:
-                raise Exception("保存 AddWorkflow 节点到数据库失败。")
+            
 
             # 返回更新后的树
             updated_tree = database.get_tree_as_json(tree_id)

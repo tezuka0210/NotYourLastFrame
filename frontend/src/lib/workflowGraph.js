@@ -872,10 +872,10 @@ export function renderTree(
       if (!d.parameters) d.parameters = {}
       d.parameters.global_context = value
       d.parameters.text = value
-      emit('update-node-parameters', d.id, d.parameters)
+      emit('regenerate-node', d.id,"AddText", d.parameters,"Intent Draft")
 
-      emit('intent-draft-send', d.id, value)
-      console.log('[IntentDraft] send:', d.id, value)
+      //emit('intent-draft-send', d.id, value)
+      //console.log('[IntentDraft] send:', d.id, value)
     })
 
     addTooltip(gEl, d)
@@ -1534,9 +1534,18 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
   headerRow.append('xhtml:div')
     .style('margin-left', 'auto')
-    .style('cursor', 'pointer')
-    .style('font-size', '10px')
+    .style('width', '14px')
+    .style('height', '14px')
+    .style('border-radius', '999px')
+    .style('border', 'none')
+    .style('background', '#ffffffff')
     .style('color', '#6b7280')
+    .style('font-size', '10px')
+    .style('display', 'inline-flex')
+    .style('align-items', 'center')
+    .style('justify-content', 'center')
+    .style('cursor', 'pointer')
+    .style('border', '1px solid #e5e7eb')
     .text('↻')
     .attr('title', 'Apply & Regenerate')
     .on('mouseenter', function () { d3.select(this).style('color', '#2563eb'); })
@@ -1992,8 +2001,17 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
   if (canAddToStitch) {
     outputHeader.append('xhtml:div')
-      .attr('class', 'output-clip-btn')   // 注意：不用 add-clip-btn，避免被 hover 逻辑影响
       .style('margin-left', 'auto')
+      .style('width', '14px')
+      .style('height', '14px')
+      .style('border-radius', '999px')
+      .style('border', 'none')
+      .style('background', '#ffffffff')
+      .style('display', 'inline-flex')
+      .style('align-items', 'center')
+      .style('justify-content', 'center')
+      .style('border', '1px solid #e5e7eb')
+      .attr('class', 'output-clip-btn')   // 注意：不用 add-clip-btn，避免被 hover 逻辑影响
       .style('cursor', 'pointer')
       .style('font-size', '10px')
       .style('color', '#6b7280')
@@ -2331,14 +2349,14 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     .style('height', '14px')
     .style('border-radius', '999px')
     .style('border', 'none')
-    .style('background', '#facc15')
-    .style('color', '#92400e')
+    .style('background', '#ffffffff')
+    .style('color', '#6b7280')
     .style('font-size', '10px')
     .style('display', 'inline-flex')
     .style('align-items', 'center')
     .style('justify-content', 'center')
     .style('cursor', 'pointer')
-    .style('box-shadow', '0 1px 2px rgba(0,0,0,0.15)')
+    .style('border', '1px solid #e5e7eb')
     .on('mousedown', ev => ev.stopPropagation())
 
   // 预览区域：固定高度，水平滚动
@@ -2407,12 +2425,9 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
         const url = URL.createObjectURL(file)
         previewImages.push(url)
       })
+      console.log(`file:`,files,d.id)
 
-      if (!d.assets) d.assets = {}
-      if (!d.assets.input) d.assets.input = {}
-      d.assets.input.images = previewImages
-
-      emit('update-node-assets', d.id, d.assets)
+      emit('upload-media', d.id, files)
       renderPreview()
 
       this.value = ''

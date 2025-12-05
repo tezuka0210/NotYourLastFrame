@@ -178,7 +178,7 @@ const createCard = async (parentNode: AppNode, moduleId: string) => {
   const defaultParams = {
     
   };
-  await handleGenerate(newNodeId,moduleId, defaultParams);
+  await handleGenerate(newNodeId,moduleId, defaultParams,moduleId);
   selectedParentIds.value = []; 
 }
 

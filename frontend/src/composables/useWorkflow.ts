@@ -341,59 +341,49 @@ function toggleNodeCollapse(nodeId: string) {
   }
 
   /** 更新现有节点的媒体资源（支持多文件） */
-  async function updateNodeMedia(nodeId: string, file: File) {
-    if (!nodeId || !file) return;
+    /** 更新现有节点的媒体资源（支持多文件） */
+  async function updateNodeMedia(nodeId: string, files: File[]) {
+    // 边界判断：空值/空数组直接返回
+    if (!nodeId || !files || files.length === 0) return;
 
     isGenerating.value = true;
-    showStatus(`正在更新节点媒体...`);
+    showStatus(`正在更新节点媒体（共${files.length}个文件）...`);
 
-    const formData = new FormData();
-    // 确保文件正确添加到FormData，参数名使用后端预期的"file"
-    formData.append('file', file, file.name); // 显式指定文件名，增强兼容性
-    
     try {
-      const uploadResponse = await fetch(
-        `/api/assets/upload?tree_id=1&target_node_id=${nodeId}`,
-        { 
-          method: 'POST', 
-          body: formData,
-          // 不要手动设置Content-Type，浏览器会自动添加正确的multipart/form-data类型及边界
+      // 存储最终的assets结果（合并多文件上传后的结果）
+      let finalAssets: any = null;
+
+      // 循环上传每个文件（若后端支持批量上传，可优化为一次请求）
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append('file', file, file.name); // 单个文件添加到FormData
+        
+        // 1. 上传单个文件
+        const uploadResponse = await fetch(
+          `/api/assets/upload?tree_id=1&target_node_id=${nodeId}`,
+          { 
+            method: 'POST', 
+            body: formData,
+          }
+        );
+
+        if (!uploadResponse.ok) {
+          const errText = await uploadResponse.text();
+          throw new Error(`文件${file.name}上传失败: ${errText}`);
         }
-      );
-      console.log(`formdata:${formData}`);
-      if (!uploadResponse.ok) {
-        const errText = await uploadResponse.text();
-        throw new Error(`文件上传失败: ${errText}`);
+
+        // 2. 提取上传后的媒体信息
+        const uploadResult = await uploadResponse.json();
+        const targetNode = uploadResult.nodes.find((n: any) => n.node_id === nodeId);
+        if (!targetNode || !targetNode.assets?.input) {
+          throw new Error(`文件${file.name}未获取到上传的媒体信息`);
+        }
+        finalAssets = targetNode.assets; // 覆盖为最新的assets（包含所有上传文件）
       }
 
-      // 2. 提取上传后的媒体URL
-      const uploadResult = await uploadResponse.json();
-      const targetNode = uploadResult.nodes.find((n: any) => n.node_id === nodeId);
-      if (!targetNode || !targetNode.assets?.input) {
-        throw new Error('未获取到上传的媒体信息');
+      if (!finalAssets) {
+        throw new Error('未获取到任何上传的媒体信息');
       }
-
-      // 3. 调用PUT接口更新assets字段（保留所有类型的媒体）
-      const updateResponse = await fetch(`/api/nodes/${nodeId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          module_id: 'TextImage',
-          assets: targetNode.assets, // 直接使用后端返回的完整assets结构
-          parameters: allNodes.value.find(n => n.id === nodeId)?.parameters
-        })
-      });
-      console.log(`assets:${targetNode.assets}`);
-
-      if (!updateResponse.ok) {
-        const errText = await updateResponse.text();
-        throw new Error(`节点更新失败: ${errText}`);
-      }
-
-      // 4. 刷新节点数据
-      const updatedTree = await updateResponse.json();
-      processTreeData(updatedTree.nodes, '节点媒体更新成功！');
-
     } catch (error: any) {
       console.error("更新节点媒体失败:", error);
       alert(`更新失败: ${error.message}`);
