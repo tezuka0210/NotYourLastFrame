@@ -1131,4 +1131,13 @@ body {
   justify-content: flex-start;
 }
 
+/* 干净版标题：无下划线、无额外 margin，仅做小标题文本用 */
+.io-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #374151; /* 和现在的 io-title 文本颜色保持一致 */
+  line-height: 1.2;
+  /* 不要 margin / border / padding，下划线由 io-divider 控制 */
+}
+
 

@@ -80,6 +80,25 @@ function getSelectionColor(node) {
   return '#CBD5E1'
 }
 
+//重写名称
+function getNodeHeaderBaseLabel(node) {
+  const mid = (node.module_id || '').toLowerCase()
+
+  // ★ 两个辅助节点用语义化标题
+  if (mid === 'addtext') {
+    // 原始用户意图 + 初次改写
+    return 'Intent Draft'
+  }
+  if (mid === 'addworkflow') {
+    // 在改写基础上整理成可执行工作流
+    return 'Workflow Planning'
+  }
+
+  // 其他节点维持原有逻辑
+  return node.module_id || '(Node)'
+}
+
+
 /** 统一控制卡片选中样式 */
 function setCardSelected(cardSel, nodeData, isSelected) {
   // 只通过 class 控制选中状态，具体阴影 & 颜色交给 CSS
@@ -179,17 +198,16 @@ export function updateSelectionStyles(svgElement, selectedIds) {
 }
 
 /**
- * 为卡片创建右键菜单（包含"生成Workflow"选项）
+ * 为卡片创建右键菜单（包含 Intent Draft / Workflow Planning）
  * @param {d3.Selection} card - 卡片DOM选择器
  * @param {Object} d - 节点数据
  * @param {Function} emit - 事件发射器
  */
 function addRightClickMenu(card, d, emit) {
   card.on('contextmenu', (ev) => {
-    ev.preventDefault(); // 阻止默认右键菜单
-    ev.stopPropagation();
+    ev.preventDefault()
+    ev.stopPropagation()
 
-    // 创建菜单容器
     const menu = d3.select('body').append('xhtml:div')
       .style('position', 'absolute')
       .style('left', `${ev.pageX}px`)
@@ -200,35 +218,45 @@ function addRightClickMenu(card, d, emit) {
       .style('padding', '4px 0')
       .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
       .style('z-index', '1000')
-      .style('min-width', '140px');
+      .style('min-width', '160px')
 
-    // 添加"生成Workflow"选项
-    menu.append('xhtml:div')
-      .style('padding', '4px 12px')
-      .style('cursor', 'pointer')
-      .style('font-size', '12px')
-      .style('color', '#374151')
-      .style('display', 'flex')
-      .style('align-items', 'center')
-      .style('gap', '6px')
-      .on('mouseenter', function() { d3.select(this).style('background', '#f3f4f6'); })
-      .on('mouseleave', function() { d3.select(this).style('background', 'transparent'); })
-      .html(`
-        <span>Add Workflow</span>
-      `)
-      .on('click', () => {
-        emit('create-card', d,'AddWorkflow', 'util'); // 触发创建事件
-        menu.remove();
-      });
+    // 工具函数：添加一行菜单项
+    const addMenuItem = (label, onClick) => {
+      menu.append('xhtml:div')
+        .style('padding', '4px 12px')
+        .style('cursor', 'pointer')
+        .style('font-size', '12px')
+        .style('color', '#374151')
+        .style('display', 'flex')
+        .style('align-items', 'center')
+        .style('gap', '6px')
+        .on('mouseenter', function () { d3.select(this).style('background', '#f3f4f6') })
+        .on('mouseleave', function () { d3.select(this).style('background', 'transparent') })
+        .text(label)
+        .on('click', () => {
+          onClick()
+          menu.remove()
+        })
+    }
 
-    // 点击其他区域关闭菜单
+    // ① 新增 Intent Draft 节点（原始意图）
+    addMenuItem('Add Intent Draft', () => {
+      emit('create-card', d, 'AddText', 'util')
+    })
+
+    // ② 新增 Workflow Planning 节点（细化工作流）
+    addMenuItem('Add Workflow Planning', () => {
+      emit('create-card', d, 'AddWorkflow', 'util')
+    })
+
     const closeMenu = () => {
-      menu.remove();
-      document.removeEventListener('click', closeMenu);
-    };
-    setTimeout(() => document.addEventListener('click', closeMenu), 0);
-  });
+      menu.remove()
+      document.removeEventListener('click', closeMenu)
+    }
+    setTimeout(() => document.addEventListener('click', closeMenu), 0)
+  })
 }
+
 
 /** 仅更新可见性（折叠/展开），不改变缩放与布局 */
 export function updateVisibility(svgElement, allNodes) {
@@ -311,15 +339,20 @@ export function renderTree(
     if (isInit) {
       width = 60
       height = 60
-    } else if (cardType === 'textFull' || cardType === 'AddWorkflow') {
+    } else if (cardType === 'textFull') {
+      // AddText → Intent Draft，单栏对话框
       width = 260
-      height = 140
+      height = 150
+    } else if (cardType === 'AddWorkflow') {
+      // Workflow Planning，需要比 Intent Draft 稍高一点
+      width = 260
+      height = 190
     } else if (cardType === 'TextImage') {
       width = 260
       height = 140
     } else if (cardType === 'audio' || isAudioMedia) {
-      width = 280
-      height = hasPrompt ? 150 : 110
+      width = 260
+      height = hasPrompt ? 175 : 110
     } else { // io
       width = 260
       if (hasMedia && hasPrompt) {
@@ -444,8 +477,12 @@ export function renderTree(
       return `translate(${n.x},${n.y})`
     })
 
+  
   /**
    * 统一构建 header：左标题 + 右侧 [-][+][x]
+   * 现在会根据模块类型给辅助节点更友好的标题：
+   *   - AddText      -> "Intent Draft"
+   *   - AddWorkflow  -> "Workflow Planning"
    */
   function buildHeader(card, d) {
     let isEditingTitle = false
@@ -460,7 +497,7 @@ export function renderTree(
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
 
-    // ★ 按节点类型设置 header 背景色（来自 CSS 变量）
+    // ★ 头部背景颜色，保持不变
     const cat = getNodeCategory(d)
     let headerBg = '#F9FAFB' // 默认灰
 
@@ -476,92 +513,95 @@ export function renderTree(
       .style('background-color', headerBg)
       .attr('data-node-category', cat)
 
+    // ★ 初始标题：优先用 displayName，其次用 getNodeHeaderBaseLabel
+    const initialLabel = d.displayName || getNodeHeaderBaseLabel(d)
+
     const title = header.append('xhtml:div')
-  .style('font-size', '10px')
-  .style('font-weight', '600')
-  .style('color', '#111827')
-  .style('overflow', 'hidden')
-  .style('text-overflow', 'ellipsis')
-  .style('white-space', 'nowrap')
-  .style('min-width', '0')
-  .style('cursor', 'text')
-  .text(d.displayName || d.module_id || '(Node)')
+      .style('font-size', '10px')
+      .style('font-weight', '600')
+      .style('color', '#111827')
+      .style('overflow', 'hidden')
+      .style('text-overflow', 'ellipsis')
+      .style('white-space', 'nowrap')
+      .style('min-width', '0')
+      .style('cursor', 'text')
+      .text(initialLabel)
 
-// ★ 双击标题进入编辑模式
-title.on('dblclick', (ev) => {
-  ev.stopPropagation()
-  if (isEditingTitle) return
-  isEditingTitle = true
+    // ★ 双击标题进入编辑模式（保留你之前的 rename 行为）
+    title.on('dblclick', (ev) => {
+      ev.stopPropagation()
+      if (isEditingTitle) return
+      isEditingTitle = true
 
-  const currentLabel = d.displayName || d.module_id || '(Node)'
+      const currentLabel = d.displayName || getNodeHeaderBaseLabel(d)
 
-  // 清空原文字，改成一个 input
-  title.text(null)
-    .style('border', '1px dashed #9ca3af')
-    .style('border-radius', '4px')
-    .style('padding', '1px 3px')
+      // 清空原文字，改成一个 input
+      title.text(null)
+        .style('border', '1px dashed #9ca3af')
+        .style('border-radius', '4px')
+        .style('padding', '1px 3px')
 
-  const input = title.append('xhtml:input')
-    .attr('type', 'text')
-    .attr('value', currentLabel)
-    .style('width', '100%')
-    .style('font-size', '10px')
-    .style('font-weight', '600')
-    .style('color', '#111827')
-    .style('border', 'none')
-    .style('outline', 'none')
-    .style('background', 'transparent')
-    .on('mousedown', ev2 => ev2.stopPropagation())
-
-  const inputNode = input.node()
-    if (inputNode) {
-      setTimeout(() => {
-        inputNode.focus()
-        inputNode.select()
-      }, 0)
-    }
-
-    function finishEdit(commit) {
-      if (!isEditingTitle) return
-      isEditingTitle = false
-
-      const newText = commit && inputNode
-        ? inputNode.value.trim()
-        : currentLabel
-
-      const finalLabel = newText || currentLabel
-      d.displayName = finalLabel   // 记录在节点对象里
-
-      // 还原标题展示
-      title.selectAll('*').remove()
-      title
+      const input = title.append('xhtml:input')
+        .attr('type', 'text')
+        .attr('value', currentLabel)
+        .style('width', '100%')
+        .style('font-size', '10px')
+        .style('font-weight', '600')
+        .style('color', '#111827')
         .style('border', 'none')
-        .style('padding', '0')
-        .text(finalLabel)
-    }
+        .style('outline', 'none')
+        .style('background', 'transparent')
+        .on('mousedown', ev2 => ev2.stopPropagation())
 
-    // 回车确认
-    d3.select(inputNode).on('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        e.stopPropagation()
-        finishEdit(true)
-        // 通知外部更新（父组件可以监听 'rename-node' 来改 nodes）
-        emit('rename-node', { id: d.id, label: d.displayName })
-      } else if (e.key === 'Escape') {
-        e.preventDefault()
-        e.stopPropagation()
-        finishEdit(false)
+      const inputNode = input.node()
+      if (inputNode) {
+        setTimeout(() => {
+          inputNode.focus()
+          inputNode.select()
+        }, 0)
       }
-    })
 
-    // 失焦也视作确认
-    d3.select(inputNode).on('blur', () => {
-      finishEdit(true)
-      emit('rename-node', { id: d.id, label: d.displayName })
-    })
-  })
+      function finishEdit(commit) {
+        if (!isEditingTitle) return
+        isEditingTitle = false
 
+        const baseLabel = getNodeHeaderBaseLabel(d)
+        const newText = commit && inputNode
+          ? inputNode.value.trim()
+          : (d.displayName || baseLabel)
+
+        const finalLabel = newText || baseLabel
+        d.displayName = finalLabel   // 记录在节点对象里
+
+        // 还原标题展示
+        title.selectAll('*').remove()
+        title
+          .style('border', 'none')
+          .style('padding', '0')
+          .text(finalLabel)
+      }
+
+      // 回车确认
+      d3.select(inputNode).on('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          e.stopPropagation()
+          finishEdit(true)
+          // 通知外部更新（父组件可以监听 'rename-node' 来改 nodes）
+          emit('rename-node', { id: d.id, label: d.displayName })
+        } else if (e.key === 'Escape') {
+          e.preventDefault()
+          e.stopPropagation()
+          finishEdit(false)
+        }
+      })
+
+      // 失焦也视作确认
+      d3.select(inputNode).on('blur', () => {
+        finishEdit(true)
+        emit('rename-node', { id: d.id, label: d.displayName })
+      })
+    })
 
     const toolbar = header.append('xhtml:div')
       .style('display', 'flex')
@@ -577,7 +617,7 @@ title.on('dblclick', (ev) => {
     })
     const hasChildren = !!(tempMap.get(d.id) && tempMap.get(d.id).children.length)
 
-    // 折叠（- / +）
+    // 折叠（- / +）——和其他节点完全一致
     if (hasChildren) {
       const collapseBtn = toolbar.append('xhtml:button')
         .attr('class', 'collapse-btn')
@@ -614,7 +654,7 @@ title.on('dblclick', (ev) => {
         })
     }
 
-    // 复制（占位）
+    // 复制（和其他节点一样）
     const cloneHeaderBtn = toolbar.append('xhtml:button')
       .text('+')
       .style('width', '18px')
@@ -649,7 +689,7 @@ title.on('dblclick', (ev) => {
           .style('border-color', '#e5e7eb')
       })
 
-    // 删除
+    // 删除（关闭），同样保持一致
     const deleteHeaderBtn = toolbar.append('xhtml:button')
       .text('×')
       .style('width', '18px')
@@ -683,9 +723,9 @@ title.on('dblclick', (ev) => {
           .style('border-color', '#fecaca')
       })
 
-
     return header
   }
+
 
   /**
    * Tooltip 辅助
@@ -699,10 +739,15 @@ title.on('dblclick', (ev) => {
   }
 
   /**
-   * 通栏文本节点（原始意图 / 提示词）
+   * Intent Draft 辅助节点（AddText）：
+   * 单栏结构，顶部 "Input Thought" + 右侧小发送按钮，下面是对话框文本框
    */
   function renderTextFullNode(gEl, d, selectedIds, emit) {
-    const promptText = (d.parameters) ? (d.parameters.positive_prompt || d.parameters.text) : ''
+    const initialText =
+      d.parameters?.global_context ||
+      d.parameters?.text ||
+      d.parameters?.positive_prompt ||
+      ''
 
     const fo = gEl.append('foreignObject')
       .attr('width', d.calculatedWidth)
@@ -727,7 +772,7 @@ title.on('dblclick', (ev) => {
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
 
-    // ✅ 用统一 helper 控制选中
+    // 选中样式（保留原逻辑）
     setCardSelected(card, d, selectedIds.includes(d.id))
 
     card.on('click', ev => {
@@ -741,127 +786,107 @@ title.on('dblclick', (ev) => {
       emit('update:selectedIds', Array.from(selected))
     })
 
+    card.on('mouseenter', () =>
+      card.selectAll('.dots-container').style('opacity', '1')
+    ).on('mouseleave', () =>
+      card.selectAll('.dots-container').style('opacity', '0')
+    )
 
-    card.on('mouseenter', () => card.selectAll('.dots-container').style('opacity', '1'))
-      .on('mouseleave', () => card.selectAll('.dots-container').style('opacity', '0'))
-
+    // 顶部 header（节点标题 + 折叠/复制/删除）
     buildHeader(card, d)
-    addRightClickMenu(card, d, emit);
+    addRightClickMenu(card, d, emit)
 
-
+    // ====== 主体：单栏，对话框风格 ======
     const body = card.append('xhtml:div')
       .style('flex', '1 1 auto')
       .style('min-height', '0')
       .style('display', 'flex')
       .style('flex-direction', 'column')
+      .style('padding', '5px 5px 4px')
 
-    const textArea = body.append('xhtml:textarea')
-      .attr('class', 'thin-scroll') // 复用你之前定义的滚动条样式
-      .style('flex', '1 1 auto')
-      .style('width', '100%')
-      .style('padding', '6px')
-      .style('font-size', '10px')
-      .style('color', '#374151')
-      .style('background-color', 'transparent') // 透明背景
-      .style('border', 'none')                  // 无边框
-      .style('border-bottom', '1px dashed #e5e7eb')
-      .style('resize', 'none')                  // 禁止拉伸
-      .style('outline', 'none')                 // 聚焦时不显示黑框
-      .style('font-family', 'inherit')
-      .property('value', promptText)            // 设置初始值
-      .attr('placeholder', 'Click to enter prompt words...')
+    // 顶部行：Input Thought + 右侧发送按钮（小一号）
+    const headerRow = body.append('xhtml:div')
+      .attr('class', 'io-header')
+      .style('align-items', 'center')
 
-    // 1. 关键：阻止 mousedown 冒泡，否则点击输入框会触发节点的拖拽
-    textArea.on('mousedown', ev => ev.stopPropagation())
+    headerRow.append('xhtml:span')
+      .attr('class', 'io-label')
+      .text('Input Thought')
 
-    // 2. 监听输入变化 (使用 blur 事件，在失焦时保存，避免频繁触发)
-    textArea.on('blur', function() {
-      const newVal = d3.select(this).property('value')
-      if (newVal === promptText) return
-      if (!d.parameters) d.parameters = {}
-      if (d.module_id === 'AddText') {
-        d.parameters.global_context = newVal
-      } else {
-        d.parameters.positive_prompt = newVal
-      }
-
-      // B. 发出事件通知父组件保存 (你需要确保父组件监听了这个事件)
-      console.log('[Graph] 更新节点文本:', d.id, newVal)
-      emit('update-node-parameters', d.id, d.parameters)
-    })
-
-    const toolbar = body.append('xhtml:div')
-      .style('flex-shrink', '0')
-      .style('padding', '4px 2px')
-      .style('display', 'flex')
-      .style('justify-content', 'flex-end')
-      .style('gap', '4px')
-
-
-    // Image button
-    const ImgBtn = toolbar.append('xhtml:button')
-      .html(`<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            style="transform:scale(2); transform-origin:center;">
-            <path d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
-            <path d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>`)
-      .style('width', '18px')
-      .style('height', '18px')
+    // 发送小按钮：挪到 Input Thought 右侧
+    const sendBtn = headerRow.append('xhtml:button')
+      .html('➤')
+      .style('margin-left', 'auto')
+      .style('width', '14px')
+      .style('height', '14px')
       .style('border-radius', '999px')
-      .style('border', '1px solid #e5e7eb')
-      .style('background', '#ffffff')
-      .style('font-size', '12px')
-      .style('line-height', '1')
+      .style('border', 'none')
+      .style('background', '#4d4d4f')
+      .style('color', '#ffffff')
+      .style('font-size', '9px')
       .style('display', 'inline-flex')
       .style('align-items', 'center')
       .style('justify-content', 'center')
-      .style('color', '#6b7280')
       .style('cursor', 'pointer')
+      .style('box-shadow', '0 1px 2px rgba(0,0,0,0.15)')
       .on('mousedown', ev => ev.stopPropagation())
-      .on('click', ev => {
-        ev.stopPropagation()
-        // 1. 修改模块类型标识（关键：用于区分渲染方式）
-        //d.module_id = 'TextImage'; // 假设textImage卡的module_id是这个
-        
-        // 2. 保留原有文本内容
-        if (!d.parameters) d.parameters = {};
-        const textContent = d.parameters.global_text || d.parameters.positive_prompt || '';
-        d.parameters.global_text = textContent; // 统一文本存储字段
-        
-        // 3. 初始化媒体相关字段（替代isUploadPlaceholder的作用）
-        d.media = {
-          type: 'image',
-          url: '', // 空URL表示需要上传
-          rawPath: null
-        };
-        
-        // 4. 触发节点重新渲染
-        emit('refresh-node', d.id, "TextImage");
-      })
-      .on('mouseenter', function () {
-        d3.select(this)
-          .style('background', '#6b7280')
-          .style('color', '#ffffff')
-          .style('border-color', '#4b5563')
-      })
-      .on('mouseleave', function () {
-        d3.select(this)
-          .style('background', '#ffffff')
-          .style('color', '#6b7280')
-          .style('border-color', '#e5e7eb')
-      })
 
-    
+    // 文本输入区域
+    const inputWrapper = body.append('xhtml:div')
+      .style('flex', '1 1 auto')
+      .style('display', 'flex')
+      .style('margin-top', '2px')
+
+    const textArea = inputWrapper.append('xhtml:textarea')
+      .attr('class', 'thin-scroll')
+      .style('flex', '1 1 auto')
+      .style('width', '100%')
+      .style('padding', '4px 6px')
+      .style('font-size', '10px')
+      .style('color', '#374151')
+      .style('background-color', '#f9fafb')
+      .style('border', '1px solid #e5e7eb')
+      .style('border-radius', '6px')
+      .style('resize', 'none')
+      .style('outline', 'none')
+      .style('font-family', 'inherit')
+      .attr('placeholder', 'Describe your idea, goal, or rough story...')
+      .property('value', initialText)
+      .on('mousedown', ev => ev.stopPropagation())
+
+    // blur 时同步参数
+    textArea.on('blur', function () {
+      const newVal = d3.select(this).property('value') || ''
+      if (!d.parameters) d.parameters = {}
+      d.parameters.global_context = newVal
+      d.parameters.text = newVal
+      emit('update-node-parameters', d.id, d.parameters)
+    })
+
+    // 点击发送按钮：写回参数 + 通知上层调用大模型
+    sendBtn.on('click', ev => {
+      ev.stopPropagation()
+      const value = textArea.property('value') || ''
+      if (!value.trim()) return
+
+      if (!d.parameters) d.parameters = {}
+      d.parameters.global_context = value
+      d.parameters.text = value
+      emit('update-node-parameters', d.id, d.parameters)
+
+      emit('intent-draft-send', d.id, value)
+      console.log('[IntentDraft] send:', d.id, value)
+    })
 
     addTooltip(gEl, d)
   }
+
 
   /**
    * 图文混排节点：左侧大文本，右侧图片/占位符
    */
   function renderTextImageNode(gEl, d, selectedIds, emit) {
     // 1. 计算布局 (类似 IO 卡)
-    
     const fo = gEl.append('foreignObject')
       .attr('width', d.calculatedWidth)
       .attr('height', d.calculatedHeight)
@@ -888,7 +913,12 @@ title.on('dblclick', (ev) => {
     setCardSelected(card, d, selectedIds.includes(d.id))
 
     card.on('click', ev => {
-      if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
+      if (
+        ev.target &&
+        ev.target.closest &&
+        ev.target.closest('button, img, video, input, textarea')
+      ) return
+
       ev.stopPropagation()
       const selected = new Set(selectedIds)
       const on = selected.has(d.id)
@@ -961,17 +991,19 @@ title.on('dblclick', (ev) => {
       .style('display', 'flex')
       .style('align-items', 'center')
       .style('justify-content', 'center')
-      .style('gap', '8px') 
-      .style('border', hasMedia ? 'none' : '2px dashed #d1d5db') // 无媒体时显示虚线边框
+      .style('gap', '8px')
+      .style('border', hasMedia ? 'none' : '2px dashed #d1d5db')
       .style('border-radius', '4px')
       .style('cursor', 'pointer')
       .style('transition', 'border-color 0.2s')
+      .style('position', 'relative')   // ⭐ 关键：让绝对定位 input 只盖住这个 80% 区域
       .on('mouseenter', function() {
         if (!hasMedia) d3.select(this).style('border-color', '#9ca3af')
       })
       .on('mouseleave', function() {
         if (!hasMedia) d3.select(this).style('border-color', '#d1d5db')
       })
+
 
     // 如果有媒体，显示媒体内容
     if (hasMedia) {
@@ -996,37 +1028,32 @@ title.on('dblclick', (ev) => {
         .style('margin-bottom', '4px')
         .text('+')
 
-      
     }
 
     // 添加实际的文件上传输入（隐藏但保持功能）
     const fileInput = uploadContainer.append('xhtml:input')
       .attr('type', 'file')
-      .attr('accept', 'image/*') // 只允许图片文件
-      .attr('multiple', true) 
+      .attr('accept', 'image/*')
+      .attr('multiple', true)
       .style('position', 'absolute')
       .style('top', '0')
       .style('left', '0')
       .style('width', '100%')
       .style('height', '100%')
-      .style('opacity', '0') // 隐藏输入框但保留点击区域
+      .style('opacity', '0')
       .style('cursor', 'pointer')
-      // 修改后：处理多个文件（最多2个）
-      .on('change', function() {
-        const file = this.files && this.files.length > 0 ? this.files[0] : null;
+      .on('mousedown', ev => ev.stopPropagation())  // ⭐ 不让事件继续冒泡到 card
+      .on('click', ev => ev.stopPropagation())
+      .on('change', function () {
+        const file = this.files && this.files.length > 0 ? this.files[0] : null
         if (file) {
-          emit('upload-media', d.id, file);
-          this.value = ''; // 清空输入，允许重复选择同一文件
+          emit('upload-media', d.id, file)
+          this.value = ''
         } else {
-          console.warn('未选择有效文件');
+          console.warn('未选择有效文件')
         }
       })
 
-    // 点击容器时触发文件输入的点击事件
-    uploadContainer.on('click', () => {
-      fileInput.node().click()
-    })
-    
     const toolbar = card.append('xhtml:div')
       .style('flex-shrink', '0')
       .style('padding', '4px 2px')
@@ -1140,259 +1167,279 @@ title.on('dblclick', (ev) => {
 
 
   /**
-   * 文本 + 音频节点（上下结构）
-   */
-  function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
-    const mediaUrl = d.assets?.output?.audio || ''; // 容错：避免 undefined 报错
-    const promptText = (d.parameters) ? (d.parameters.positive_prompt || d.parameters.text) : '';
-
-    const fo = gEl.append('foreignObject')
-      .attr('width', d.calculatedWidth)
-      .attr('height', d.calculatedHeight)
-      .attr('x', -d.calculatedWidth / 2)
-      .attr('y', -d.calculatedHeight / 2)
-      .style('overflow', 'visible')
-
-    const card = fo.append('xhtml:div')
-      .attr('class', 'node-card')
-      .attr('data-node-category', getNodeCategory(d))
-      .style('width', '100%')
-      .style('height', '100%')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('border-width', '2px')
-      .style('border-color', getNodeBorderColor(d))
-      .style('border-radius', '8px')
-      .style('position', 'relative')
-      .style('cursor', 'pointer')
-      .style('background-color', '#ffffff')
-      .style('user-select', 'none')
-      .style('-webkit-user-select', 'none')
-
-    setCardSelected(card, d, selectedIds.includes(d.id))
-
-    card.on('click', ev => {
-      if (ev.target && ev.target.closest && ev.target.closest('button')) return
-      ev.stopPropagation()
-      const selected = new Set(selectedIds)
-      const on = selected.has(d.id)
-      if (on) selected.delete(d.id)
-      else if (selected.size < 2) selected.add(d.id)
-      setCardSelected(card, d, !on)
-      emit('update:selectedIds', Array.from(selected))
-    })
-
-    card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
-      .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
-
-    buildHeader(card, d)
-    addRightClickMenu(card, d, emit);
-    const body = card.append('xhtml:div')
-      .style('flex', '1 1 auto')
-      .style('min-height', '0')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('padding', '4px 2px')
-      .style('gap', '4px')
-
-    if (promptText && promptText.trim() !== '') {
-      body.append('xhtml:div')
-        .style('font-size', '10px')
-        .style('color', '#374151')
-        .style('white-space', 'pre-wrap')
-        .style('word-break', 'break-all')
-        .style('max-height', '40px')
-        .style('overflow', 'hidden')
-        .style('user-select', 'none')
-        .style('-webkit-user-select', 'none')
-        .text(promptText)
-        .on('mousedown', ev => ev.stopPropagation())
-    }
-
-    const audioRow = body.append('xhtml:div')
-      .style('flex', '1 1 auto')
-      .style('display', 'flex')
-      .style('align-items', 'center')
-      .style('gap', '8px')
-      .style('min-height', '0')
-
-    const playBtn = audioRow.append('xhtml:button')
-      .style('width', '32px')
-      .style('height', '32px')
-      .style('border', 'none')
-      .style('background-color', NODE_COLORS.audio)
-      .style('color', '#ffffff')
-      .style('border-radius', '50%')
-      .style('font-size', '16px')
-      .style('line-height', '32px')
-      .style('flex-shrink', '0')
-      .style('cursor', 'pointer')
-      .style('user-select', 'none')
-      .html('▶')
-      .on('mousedown', ev => ev.stopPropagation())
-      // 无音频时禁用播放按钮（仅视觉提示，不影响布局）
-      .style('opacity', mediaUrl ? '1' : '0.5')
-      .style('cursor', mediaUrl ? 'pointer' : 'not-allowed')
-
-    const waveformWrapper = audioRow.append('xhtml:div')
-      .style('flex-grow', '1')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('justify-content', 'center')
-      .style('min-width', '0')
-
-    // 【核心修改1】无音频时仅保留空白的波形容器，无背景色、无提示文本
-    const waveformDiv = waveformWrapper.append('xhtml:div')
-      .style('width', '100%')
-      .style('height', '20px')
-
-    // 【核心修改2】无音频时隐藏时间显示（或留空，二选一）
-    const timeDisplay = waveformWrapper.append('xhtml:div')
-      .style('font-size', '10px')
-      .style('color', '#6b7280')
-      .text(mediaUrl ? '0:00 / --:--' : '') // 无音频时显示空字符串
-
-    // 【核心修改3】分情况处理 WaveSurfer 初始化（仅有音频时初始化）
-    let wavesurfer = null;
-    if (mediaUrl) {
-      wavesurfer = WaveSurfer.create({
-        container: waveformDiv.node(),
-        waveColor: '#9ca3af',
-        progressColor: NODE_COLORS.audio,
-        height: 20,
-        barHeight: 2,
-        barWidth: 2,
-        barGap: 1,
-        barRadius: 2,
-        url: mediaUrl,
-      })
-
-      wavesurfer.on('ready', (duration) => {
-        timeDisplay.text(`0:00 / ${formatTime(duration)}`)
-      })
-
-      wavesurfer.on('timeupdate', (currentTime) => {
-        timeDisplay.text(`${formatTime(currentTime)} / ${formatTime(wavesurfer.getDuration())}`)
-      })
-
-      wavesurfer.on('finish', () => {
-        playBtn.html('▶')
-      })
-
-      wavesurfer.on('error', (err) => {
-        console.error('WaveSurfer error:', err)
-        waveformDiv.html(`<span style="color:red; font-size:10px;">Audio error: ${err}</span>`)
-      })
-
-      playBtn.on('click', ev => {
-        ev.stopPropagation()
-        wavesurfer.playPause()
-        if (wavesurfer.isPlaying()) {
-          playBtn.html('⏸')
-        } else {
-          playBtn.html('▶')
-        }
-      })
-    } else {
-      // 无音频时，播放按钮点击无响应
-      playBtn.on('click', ev => {
-        ev.stopPropagation()
-      })
-    }
-
-    // 【核心修改4】销毁时判断 wavesurfer 是否存在
-    fo.on('remove', () => {
-      if (wavesurfer) wavesurfer.destroy()
-    })
-
-    // const dots = card.append('xhtml:div')
-    //   .attr('class', 'dots-container')
-    //   .style('position', 'absolute')
-    //   .style('top', '50px')
-    //   .style('right', '4px')
-    //   .style('display', 'flex')
-    //   .style('flex-direction', 'column')
-    //   .style('opacity', '0')
-    //   .style('transition', 'opacity 0.15s ease-in-out')
-    //   .style('z-index', '10')
-
-    // const buttonTypes = ['audio']
-    // buttonTypes.forEach((key, idx) => {
-    //   const info = workflowTypes[key]
-    //   if (!info) return
-    //   dots.append('xhtml:button')
-    //     .style('background-color', info.color)
-    //     .style('width', '16px')
-    //     .style('height', '16px')
-    //     .style('border-radius', '50%')
-    //     .style('border', 'none')
-    //     .style('padding', '0')
-    //     .style('cursor', 'pointer')
-    //     .style('transition', 'transform 0.15s ease-in-out')
-    //     .style('margin-top', idx > 0 ? '4px' : '0')
-    //     .attr('title', `Start ${info.type} workflow`)
-    //     .on('mouseenter', function () { d3.select(this).style('transform', 'scale(1.25)') })
-    //     .on('mouseleave', function () { d3.select(this).style('transform', 'scale(1)') })
-    //     .on('mousedown', ev => ev.stopPropagation())
-    //     .on('click', ev => {
-    //       ev.stopPropagation()
-    //       emit('open-generation', d, info.defaultModuleId, info.type)
-    //     })
-    // })
-
-    const footer = card.append('xhtml:div')
-      .style('display', 'flex')
-      .style('justify-content', 'flex-end')
-      .style('padding', '2px')
-
-    footer.append('xhtml:button')
-      .attr('class', 'add-clip-btn')
-      .html('▶')
-      .style('opacity', '0')
-      .style('transition', 'opacity 0.15s ease-in-out')
-      .style('width', '16px')
-      .style('height', '16px')
-      .style('display', 'flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('color', NODE_COLORS.audio)
-      .style('font-size', '1.125rem')
-      .style('border', 'none')
-      .style('background-color', 'transparent')
-      .style('padding', '0')
-      .style('cursor', 'pointer')
-      .on('mousedown', ev => ev.stopPropagation())
-      .on('click', ev => {
-        ev.stopPropagation()
-        emit('add-clip', d, 'audio')
-      })
-
-      footer.append('xhtml:div')
-      .style('cursor', 'pointer')
-      .style('font-size', '10px')
-      .style('color', '#6b7280')
-      .style('padding', '0 2px')
-      .text('↻')
-      .attr('title', 'Apply & Regenerate')
-      .on('mouseenter', function() { d3.select(this).style('color', NODE_COLORS.audio) })
-      .on('mouseleave', function() { d3.select(this).style('color', '#6b7280') })
-      .on('mousedown', ev => ev.stopPropagation())
-      .on('click', (ev) => {
-        ev.stopPropagation()
-        const currentParams = {}
-        left.selectAll('.node-input').each(function() {
-            const el = d3.select(this)
-            const key = el.attr('data-key')
-            let val = el.property('value')
-            if (el.attr('type') === 'number') val = Number(val)
-            if (key) currentParams[key] = val
-        })
-        console.log('currentParams:', currentParams, d.module_id);
-        emit('regenerate-node', d.id,d.module_id, currentParams)
-      })
-
-    addTooltip(gEl, d)
+ * 文本 + 音频节点（上下结构，分 Input / Output 两块）
+ */
+function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
+  // 兼容数组或字符串形式的 audio 资源
+  let mediaUrl = '';
+  const audioAsset = d.assets?.output?.audio;
+  if (Array.isArray(audioAsset)) {
+    mediaUrl = audioAsset[0] || '';
+  } else if (typeof audioAsset === 'string') {
+    mediaUrl = audioAsset;
   }
+
+  const promptText = (d.parameters)
+    ? (d.parameters.positive_prompt || d.parameters.text || '')
+    : '';
+
+  const fo = gEl.append('foreignObject')
+    .attr('width', d.calculatedWidth)
+    .attr('height', d.calculatedHeight)
+    .attr('x', -d.calculatedWidth / 2)
+    .attr('y', -d.calculatedHeight / 2)
+    .style('overflow', 'visible');
+
+  const card = fo.append('xhtml:div')
+    .attr('class', 'node-card')
+    .attr('data-node-category', getNodeCategory(d))
+    .style('width', '100%')
+    .style('height', '100%')
+    .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('border-width', '2px')
+    .style('border-color', getNodeBorderColor(d))
+    .style('border-radius', '8px')
+    .style('position', 'relative')
+    .style('cursor', 'pointer')
+    .style('background-color', '#ffffff')
+    .style('user-select', 'none')
+    .style('-webkit-user-select', 'none');
+
+  setCardSelected(card, d, selectedIds.includes(d.id));
+
+  card.on('click', ev => {
+    if (ev.target && ev.target.closest && ev.target.closest('button, input, textarea, video, img')) return;
+    ev.stopPropagation();
+    const selected = new Set(selectedIds);
+    const on = selected.has(d.id);
+    if (on) selected.delete(d.id);
+    else if (selected.size < 2) selected.add(d.id);
+    setCardSelected(card, d, !on);
+    emit('update:selectedIds', Array.from(selected));
+  });
+
+  card.on('mouseenter', () =>
+    card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1')
+  ).on('mouseleave', () =>
+    card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0')
+  );
+
+  // Header：节点标题 + 折叠 / 复制 / 删除
+  buildHeader(card, d);
+  addRightClickMenu(card, d, emit);
+
+  // ====== 主体：上下两块 Input / Output ======
+  const body = card.append('xhtml:div')
+    .style('flex', '1 1 auto')
+    .style('min-height', '0')
+    .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('padding', '4px 4px')
+    .style('gap', '4px');
+
+  /* ==================== Input 区 ==================== */
+  const inputSection = body.append('xhtml:div')
+    .style('flex', '0 0 auto')
+    .style('display', 'flex')
+    .style('flex-direction', 'column');
+
+  const inputHeader = inputSection.append('xhtml:div')
+    .attr('class', 'io-header');
+
+  inputHeader.append('xhtml:span')
+    .attr('class', 'io-title')
+    .text('Input');
+
+  // ↻：根据当前文本重新生成音频
+  inputHeader.append('xhtml:div')
+    .style('margin-left', 'auto')
+    .style('cursor', 'pointer')
+    .style('font-size', '10px')
+    .style('color', '#6b7280')
+    .text('↻')
+    .attr('title', 'Apply & Regenerate')
+    .on('mouseenter', function () { d3.select(this).style('color', '#2563eb'); })
+    .on('mouseleave', function () { d3.select(this).style('color', '#6b7280'); })
+    .on('mousedown', ev => ev.stopPropagation())
+    .on('click', (ev) => {
+      ev.stopPropagation();
+      const textVal = textArea.property('value') || '';
+      const baseParams = d.parameters || {};
+      const currentParams = {
+        ...baseParams,
+        text: textVal,
+        positive_prompt: textVal
+      };
+      emit('regenerate-node', d.id, d.module_id, currentParams);
+    });
+
+  // inputSection.append('xhtml:div')
+  //   .attr('class', 'io-divider');
+
+  const textArea = inputSection.append('xhtml:textarea')
+    .attr('class', 'thin-scroll')
+    .style('flex', '0 0 auto')
+    // .style('width', '100%')
+    .style('min-height', '48px')
+    .style('padding', '4px 6px')
+    .style('font-size', '10px')
+    .style('color', '#374151')
+    .style('background-color', '#f9fafb')
+    .style('border', '1px solid #e5e7eb')
+    .style('border-radius', '6px')
+    .style('resize', 'none')
+    .style('outline', 'none')
+    .style('font-family', 'inherit')
+    .attr('placeholder', 'Describe the narration or sound you want to generate...')
+    .property('value', promptText)
+    .on('mousedown', ev => ev.stopPropagation());
+
+  // 文本修改同步到参数
+  textArea.on('blur', function () {
+    const val = d3.select(this).property('value') || '';
+    if (!d.parameters) d.parameters = {};
+    d.parameters.text = val;
+    d.parameters.positive_prompt = val;
+    emit('update-node-parameters', d.id, d.parameters);
+  });
+
+  inputSection.append('xhtml:div')
+    .attr('class', 'io-divider');
+
+  /* ==================== Output 区 ==================== */
+  const outputSection = body.append('xhtml:div')
+    .style('flex', '1 1 auto')
+    .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('min-height', '0');
+
+  const outputHeader = outputSection.append('xhtml:div')
+    .attr('class', 'io-header');
+
+  outputHeader.append('xhtml:span')
+    .attr('class', 'io-title')
+    .text('Output');
+
+  // A：加入到 storyboard buffer（等价原来 footer 里的 add-clip-btn）
+  outputHeader.append('xhtml:div')
+    .style('margin-left', 'auto')
+    .style('cursor', mediaUrl ? 'pointer' : 'not-allowed')
+    .style('font-size', '10px')
+    .style('color', mediaUrl ? '#6b7280' : '#d1d5db')
+    .text('A')
+    .attr('title', 'Add to storyboard')
+    .on('mousedown', ev => ev.stopPropagation())
+    .on('click', ev => {
+      ev.stopPropagation();
+      if (!mediaUrl) return;
+      emit('add-clip', d, 'audio');
+    })
+    .on('mouseenter', function () {
+      if (!mediaUrl) return;
+      d3.select(this).style('color', '#2563eb');
+    })
+    .on('mouseleave', function () {
+      if (!mediaUrl) return;
+      d3.select(this).style('color', '#6b7280');
+    });
+
+  // outputSection.append('xhtml:div')
+  //   .attr('class', 'io-divider');
+
+  // 播放器区域：和其他节点的内外边距保持一致
+  const audioRow = outputSection.append('xhtml:div')
+    .style('flex', '1 1 auto')
+    .style('display', 'flex')
+    .style('align-items', 'center')
+    .style('gap', '8px')
+    .style('padding', '2px 0')
+    .style('min-height', '0');
+
+  const playBtn = audioRow.append('xhtml:button')
+    .style('width', '32px')
+    .style('height', '32px')
+    .style('border', 'none')
+    .style('background-color', NODE_COLORS.audio)
+    .style('color', '#ffffff')
+    .style('border-radius', '50%')
+    .style('font-size', '16px')
+    .style('line-height', '32px')
+    .style('flex-shrink', '0')
+    .style('cursor', mediaUrl ? 'pointer' : 'not-allowed')
+    .style('user-select', 'none')
+    .style('opacity', mediaUrl ? '1' : '0.5')
+    .html('▶')
+    .on('mousedown', ev => ev.stopPropagation());
+
+  const waveformWrapper = audioRow.append('xhtml:div')
+    .style('flex-grow', '1')
+    .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('justify-content', 'center')
+    .style('min-width', '0');
+
+  const waveformDiv = waveformWrapper.append('xhtml:div')
+    .style('width', '100%')
+    .style('height', '20px');
+
+  const timeDisplay = waveformWrapper.append('xhtml:div')
+    .style('font-size', '10px')
+    .style('color', '#6b7280')
+    .text(mediaUrl ? '0:00 / --:--' : '');
+
+  // WaveSurfer 逻辑（仅在有音频时初始化）
+  let wavesurfer = null;
+  if (mediaUrl) {
+    wavesurfer = WaveSurfer.create({
+      container: waveformDiv.node(),
+      waveColor: '#9ca3af',
+      progressColor: NODE_COLORS.audio,
+      height: 20,
+      barHeight: 2,
+      barWidth: 2,
+      barGap: 1,
+      barRadius: 2,
+      url: mediaUrl
+    });
+
+    wavesurfer.on('ready', (duration) => {
+      timeDisplay.text(`0:00 / ${formatTime(duration)}`);
+    });
+
+    wavesurfer.on('timeupdate', (currentTime) => {
+      timeDisplay.text(`${formatTime(currentTime)} / ${formatTime(wavesurfer.getDuration())}`);
+    });
+
+    wavesurfer.on('finish', () => {
+      playBtn.html('▶');
+    });
+
+    wavesurfer.on('error', (err) => {
+      console.error('WaveSurfer error:', err);
+      waveformDiv.html(`<span style="color:red; font-size:10px;">Audio error</span>`);
+    });
+
+    playBtn.on('click', ev => {
+      ev.stopPropagation();
+      wavesurfer.playPause();
+      if (wavesurfer.isPlaying()) {
+        playBtn.html('⏸');
+      } else {
+        playBtn.html('▶');
+      }
+    });
+  } else {
+    playBtn.on('click', ev => ev.stopPropagation());
+  }
+
+  // 节点被移除时销毁 WaveSurfer
+  fo.on('remove', () => {
+    if (wavesurfer) wavesurfer.destroy();
+  });
+
+  addTooltip(gEl, d);
+}
 
 
 /**
@@ -1454,9 +1501,6 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     emit('update:selectedIds', Array.from(selected))
   })
 
-  // card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
-  //     .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'));
-
   /* ---------- 顶部 header ---------- */
   buildHeader(card, d);
 
@@ -1491,7 +1535,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   headerRow.append('xhtml:div')
     .style('margin-left', 'auto')
     .style('cursor', 'pointer')
-    .style('font-size', '11px')
+    .style('font-size', '10px')
     .style('color', '#6b7280')
     .text('↻')
     .attr('title', 'Apply & Regenerate')
@@ -1823,7 +1867,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
   imageHeader.append('xhtml:span')
     .attr('class', 'prompt-section-title')
-    .text('Input Images');
+    .text('Images');
 
   imageHeader.append('xhtml:span')
     .attr('class', 'prompt-count')
@@ -1951,7 +1995,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
       .attr('class', 'output-clip-btn')   // 注意：不用 add-clip-btn，避免被 hover 逻辑影响
       .style('margin-left', 'auto')
       .style('cursor', 'pointer')
-      .style('font-size', '11px')
+      .style('font-size', '10px')
       .style('color', '#6b7280')
       .text('A')
       .attr('title', 'Add to storyboard')
@@ -2083,7 +2127,8 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   addTooltip(gEl, d);
 }
 
-// 实现AddWorkflow卡片渲染（左右分割 + 头部按钮，无footer）
+// Workflow Planning 辅助节点（AddWorkflow）：
+// 上：Fine-tune operation 文字细化；下：Input Images 图片参考
 function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
   const fo = gEl.append('foreignObject')
     .attr('width', d.calculatedWidth)
@@ -2127,76 +2172,42 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0')
   )
 
+  // 顶部标题（节点名 + 折叠/复制/删除）
   buildHeader(card, d)
   addRightClickMenu(card, d, emit)
 
-  // --- 核心布局：左右分栏 ---
   const body = card.append('xhtml:div')
     .style('flex', '1 1 auto')
     .style('min-height', '0')
     .style('display', 'flex')
-    .style('flex-direction', 'row') // 左右排列
+    .style('flex-direction', 'column')
+    .style('padding', '4px 6px')
+    .style('gap', '4px')
 
-  // === 左侧：Input 区 ===
-  const left = body.append('xhtml:div')
-    .attr('class', 'io-panel io-panel--left')
+  // ========= 上半部分：Fine-tune operation =========
+  const opSection = body.append('xhtml:div')
+    .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('gap', '2px')
 
-  // Input Header
-  const inputHeader = left.append('xhtml:div')
+  const opHeader = opSection.append('xhtml:div')
     .attr('class', 'io-header')
+    .style('align-items', 'center')
 
-  inputHeader.append('xhtml:span')
-    .attr('class', 'io-title')
-    .text('Input')
+  opHeader.append('xhtml:span')
+    .attr('class', 'io-label')
+    .text('Fine-tune operation')
 
-  // Input / Output 下方的虚线
-  left.append('xhtml:div')
-    .attr('class', 'io-divider')
-
-  const promptText = d.parameters?.text || d.parameters?.positive_prompt || ''
-  const textArea = left.append('xhtml:textarea')
-    .attr('class', 'thin-scroll')
-    .style('flex', '1')
-    .style('width', '100%')
-    .style('padding', '6px')
-    .style('font-size', '10px')
-    .style('color', '#374151')
-    .style('border', 'none')
-    .style('resize', 'none')
-    .style('outline', 'none')
-    .style('background', 'transparent')
-    .property('value', promptText)
-    .on('mousedown', ev => ev.stopPropagation())
-    .on('blur', function () {
-      const newVal = d3.select(this).property('value')
-      if (newVal !== promptText) {
-        if (!d.parameters) d.parameters = {}
-        d.parameters.text = newVal
-        emit('update-node-parameters', d.id, d.parameters)
-      }
-    })
-
-  // === 右侧：Output 区 ===
-  const right = body.append('xhtml:div')
-    .attr('class', 'io-panel io-panel--right')
-
-  const outputHeader = right.append('xhtml:div')
-    .attr('class', 'io-header')
-
-  outputHeader.append('xhtml:span')
-    .attr('class', 'io-title')
-    .text('Output')
-
-  // ⭐ 把 Agent “A” 按钮放到 Output 标题右侧
-  const AgentBtn = outputHeader.append('xhtml:button')
+  // 右侧小 A 按钮：调用 Agent 选择工作流
+  const opAgentBtn = opHeader.append('xhtml:button')
     .text('A')
-    .style('margin-left', 'auto')   // 把按钮推到最右
-    .style('width', '18px')
-    .style('height', '18px')
+    .style('margin-left', 'auto')
+    .style('width', '14px')
+    .style('height', '14px')
     .style('border-radius', '999px')
     .style('border', '1px solid #e5e7eb')
     .style('background', '#ffffff')
-    .style('font-size', '12px')
+    .style('font-size', '9px')
     .style('line-height', '1')
     .style('display', 'inline-flex')
     .style('align-items', 'center')
@@ -2204,55 +2215,6 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     .style('color', '#6b7280')
     .style('cursor', 'pointer')
     .on('mousedown', ev => ev.stopPropagation())
-    .on('click', (ev) => {
-      ev.stopPropagation()
-
-      const payload = {
-        user_input: d.parameters?.positive_prompt || d.parameters?.text || '',
-        node_id: d.id,
-        workflow_context: {
-          current_workflow: d.module_id,
-          parent_nodes: d.originalParents || []
-        }
-      }
-
-      fetch('/api/agents/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-        .then(res => res.json())
-        .then(data => {
-          console.log('Agent处理结果:', data)
-          const rawWorkflowId = data.selected_workflow || ''
-          const workflowId = rawWorkflowId.replace('.json', '')
-          const workflow_title = data.workflow_title
-
-          import('@/lib/useWorkflowForm.js').then(({ workflowParameters }) => {
-            if (!workflowParameters) {
-              console.error('workflowParameters 未正确导入')
-              return
-            }
-
-            const paramDefinitions = workflowParameters[workflowId] || []
-            const defaultParams = paramDefinitions.reduce((obj, param) => {
-              obj[param.id] = param.defaultValue
-              return obj
-            }, {})
-
-            const updatedParams = {
-              ...defaultParams,
-              positive_prompt: data.message.positive || defaultParams.positive_prompt || '',
-              negative_prompt: data.message.negative || defaultParams.negative_prompt || ''
-            }
-
-            console.log('转换后的参数格式:', updatedParams)
-            d.parameters = updatedParams
-            emit('refresh-node', d.id, workflowId, d.parameters, workflow_title)
-          })
-        })
-        .catch(err => console.error('调用Agent失败:', err))
-    })
     .on('mouseenter', function () {
       d3.select(this)
         .style('background', '#6b7280')
@@ -2266,71 +2228,200 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
         .style('border-color', '#e5e7eb')
     })
 
-  // Output 标题下方虚线
-  right.append('xhtml:div')
-    .attr('class', 'io-divider')
+  const opText = d.parameters?.text ||
+    d.parameters?.positive_prompt ||
+    d.parameters?.global_context ||
+    ''
 
-  // 判断是否有媒体内容（AddWorkflow 一般是占位图，可留空或保持你原逻辑）
-  const hasMedia =
-    !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0)
-  const mediaUrl = hasMedia ? d.assets.input?.images : ''
-  console.log(`renderAddWorkflowNode media:`, mediaUrl)
+  const opTextArea = opSection.append('xhtml:textarea')
+    .attr('class', 'thin-scroll')
+    .style('flex', '1 1 auto')
+    // .style('width', '100%')
+    .style('min-height', '48px')
+    .style('padding', '4px 6px')
+    .style('font-size', '10px')
+    .style('color', '#374151')
+    .style('background-color', '#f9fafb')
+    .style('border', '1px solid #e5e7eb')
+    .style('border-radius', '6px')
+    .style('resize', 'none')
+    .style('outline', 'none')
+    .style('font-family', 'inherit')
+    .attr('placeholder', 'Refine the operation details for this workflow...')
+    .property('value', opText)
+    .on('mousedown', ev => ev.stopPropagation())
 
-  const uploadContainer = right.append('xhtml:div')
-    .style('width', '80%')
-    .style('height', '80%')
+  opTextArea.on('blur', function () {
+    const val = d3.select(this).property('value') || ''
+    if (!d.parameters) d.parameters = {}
+    d.parameters.text = val
+    d.parameters.positive_prompt = val
+    emit('update-node-parameters', d.id, d.parameters)
+  })
+
+  // Agent 按钮点击：调用后端 /api/agents/process
+  opAgentBtn.on('click', ev => {
+    ev.stopPropagation()
+
+    const payload = {
+      user_input: opTextArea.property('value') || '',
+      node_id: d.id,
+      workflow_context: {
+        current_workflow: d.module_id,
+        parent_nodes: d.originalParents || []
+      }
+    }
+
+    fetch('/api/agents/process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log('Agent处理结果 (Workflow Planning):', data)
+        const rawWorkflowId = data.selected_workflow || ''
+        const workflowId = rawWorkflowId.replace('.json', '')
+        const workflow_title = data.workflow_title
+
+        import('@/lib/useWorkflowForm.js').then(({ workflowParameters }) => {
+          if (!workflowParameters) {
+            console.error('workflowParameters 未正确导入')
+            return
+          }
+
+          const paramDefinitions = workflowParameters[workflowId] || []
+          const defaultParams = paramDefinitions.reduce((obj, param) => {
+            obj[param.id] = param.defaultValue
+            return obj
+          }, {})
+
+          const updatedParams = {
+            ...defaultParams,
+            positive_prompt: data.message?.positive || defaultParams.positive_prompt || '',
+            negative_prompt: data.message?.negative || defaultParams.negative_prompt || ''
+          }
+
+          d.parameters = updatedParams
+          emit('refresh-node', d.id, workflowId, d.parameters, workflow_title)
+        })
+      })
+      .catch(err => console.error('调用Agent失败:', err))
+  })
+
+  // ========= 下半部分：Input Images =========
+  const imgSection = body.append('xhtml:div')
     .style('display', 'flex')
+    .style('flex-direction', 'column')
+    .style('gap', '2px')
+
+  const imgHeader = imgSection.append('xhtml:div')
+    .attr('class', 'io-header')
+    .style('align-items', 'center')
+
+  imgHeader.append('xhtml:span')
+    .attr('class', 'io-label')
+    .text('Input Images')
+
+  // 右侧黄色小圆点 + 号按钮
+  const addImgBtn = imgHeader.append('xhtml:button')
+    .text('+')
+    .style('margin-left', 'auto')
+    .style('width', '14px')
+    .style('height', '14px')
+    .style('border-radius', '999px')
+    .style('border', 'none')
+    .style('background', '#facc15')
+    .style('color', '#92400e')
+    .style('font-size', '10px')
+    .style('display', 'inline-flex')
     .style('align-items', 'center')
     .style('justify-content', 'center')
-    .style('border', hasMedia ? 'none' : '2px dashed #d1d5db')
-    .style('border-radius', '4px')
     .style('cursor', 'pointer')
-    .style('transition', 'border-color 0.2s')
-    .on('mouseenter', function () {
-      if (!hasMedia) d3.select(this).style('border-color', '#9ca3af')
-    })
-    .on('mouseleave', function () {
-      if (!hasMedia) d3.select(this).style('border-color', '#d1d5db')
-    })
+    .style('box-shadow', '0 1px 2px rgba(0,0,0,0.15)')
+    .on('mousedown', ev => ev.stopPropagation())
 
-  if (hasMedia) {
-    uploadContainer.append('xhtml:img')
-      .attr('src', mediaUrl)
-      .style('max-width', '100%')
-      .style('max-height', '100%')
-      .style('object-fit', 'contain')
-  } else {
-    const uploadContent = uploadContainer.append('xhtml:div')
-      .style('text-align', 'center')
-      .style('color', '#6b7280')
+  // 预览区域：固定高度，水平滚动
+  const previewRow = imgSection.append('xhtml:div')
+    .style('flex', '0 0 auto')
+    .style('height', '54px')
+    .style('border-radius', '6px')
+    .style('background', '#f9fafb')
+    .style('border', '1px dashed #e5e7eb')
+    .style('padding', '4px')
+    .style('display', 'flex')
+    .style('align-items', 'center')
+    .style('gap', '4px')
+    .style('overflow-x', 'auto')
 
-    uploadContent.append('xhtml:div')
-      .style('font-size', '24px')
-      .style('line-height', '1')
-      .style('margin-bottom', '4px')
-      .text('+')
+  let previewImages = (d.assets && d.assets.input && d.assets.input.images)
+    ? [...d.assets.input.images]
+    : []
+
+  const renderPreview = () => {
+    previewRow.selectAll('*').remove()
+
+    if (!previewImages.length) {
+      previewRow.append('xhtml:div')
+        .style('font-size', '10px')
+        .style('color', '#9ca3af')
+        .text('Click + to upload reference images for this plan.')
+      return
+    }
+
+    previewImages.forEach(url => {
+      const wrapper = previewRow.append('xhtml:div')
+        .style('flex', '0 0 auto')
+        .style('height', '100%')
+        .style('border-radius', '4px')
+        .style('overflow', 'hidden')
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('click', ev => {
+          ev.stopPropagation()
+          emit('open-preview', url, 'image')
+        })
+
+      wrapper.append('xhtml:img')
+        .attr('src', url)
+        .attr('alt', 'Input image')
+        .style('height', '100%')
+        .style('width', 'auto')
+        .style('object-fit', 'cover')
+        .style('display', 'block')
+    })
   }
 
-  const fileInput = uploadContainer.append('xhtml:input')
+  renderPreview()
+
+  // 隐藏的 file input
+  const hiddenInput = imgSection.append('xhtml:input')
     .attr('type', 'file')
     .attr('accept', 'image/*')
-    .style('position', 'absolute')
-    .style('top', '0')
-    .style('left', '0')
-    .style('width', '100%')
-    .style('height', '100%')
-    .style('opacity', '0')
-    .style('cursor', 'pointer')
+    .attr('multiple', true)
+    .style('display', 'none')
     .on('change', function () {
-      const file = this.files?.[0]
-      if (file) {
-        emit('upload-media', d.id, file)
-        this.value = ''
-      }
+      const files = Array.from(this.files || [])
+      if (!files.length) return
+
+      files.forEach(file => {
+        const url = URL.createObjectURL(file)
+        previewImages.push(url)
+      })
+
+      if (!d.assets) d.assets = {}
+      if (!d.assets.input) d.assets.input = {}
+      d.assets.input.images = previewImages
+
+      emit('update-node-assets', d.id, d.assets)
+      renderPreview()
+
+      this.value = ''
     })
 
-  uploadContainer.on('click', () => {
-    fileInput.node().click()
+  addImgBtn.on('click', ev => {
+    ev.stopPropagation()
+    const inp = hiddenInput.node()
+    if (inp) inp.click()
   })
 
   addTooltip(gEl, d)
