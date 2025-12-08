@@ -1345,7 +1345,7 @@ function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
     .style('cursor', mediaUrl ? 'pointer' : 'not-allowed')
     .attr('class', 'icon-circle-btn output-clip-btn')
     .style('color', mediaUrl ? '#6b7280' : '#d1d5db')
-    .text('☆')
+    .text('↗')
     .attr('title', 'Add to storyboard')
     .on('mousedown', ev => ev.stopPropagation())
     .on('click', ev => {
@@ -1490,6 +1490,10 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   const rootStyle = getComputedStyle(document.documentElement);
   const mediaVideoColor = rootStyle.getPropertyValue('--media-video').trim() || '#5ABF8E';
   const mediaImageColor = rootStyle.getPropertyValue('--media-image').trim() || '#5F96DB';
+
+  // ⭐ 支持多选：用 Set 存所有选中的 mediaUrl
+  const selectedMediaUrls = new Set();
+  let selectedMediaUrl = null; // 保留最后一次点击的，兼容你其他逻辑
 
 
   const fo = gEl.append('foreignObject')
@@ -2004,9 +2008,6 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     .style('overflow-y', 'auto')
     .style('max-height', '100%');
 
-  // 新增：定义变量存储当前选中的图片/视频 URL
-  let selectedMediaUrl = '';
-
   // Output 头部 + 五角星按钮（样式跟左侧 Input 一致）
   const outputHeader = right.append('xhtml:div')
     .attr('class', 'io-header');
@@ -2018,18 +2019,32 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   if (canAddToStitch) {
     outputHeader.append('xhtml:div')
       .attr('class', 'icon-circle-btn')
-      .text('☆')
+      .text('↗')
       .attr('title', 'Add to storyboard')
       .on('mousedown', ev => ev.stopPropagation())
-      .on('click', ev => {
+            .on('click', ev => {
         ev.stopPropagation();
-        // 修复2：确保选中的URL优先，且完全替换d中的mediaUrl
-        const targetUrl = selectedMediaUrl || (isVideo ? videoUrls[0] : imageUrls[0]);
-        if (!targetUrl) return;
-        // 深度克隆d对象，避免修改原对象导致的副作用
-        emit('add-clip', d,targetUrl, isVideo ? 'video' : 'image');
-        console.log('五角星添加的URL：', targetUrl); // 调试确认
+
+        // 如果有多选：把所有选中的 media 丢进 buffer
+        if (selectedMediaUrls.size > 0) {
+          selectedMediaUrls.forEach(url => {
+            const isVideoMedia = videoUrls.includes(url);
+            const mediaType = isVideoMedia ? 'video' : 'image';
+            emit('add-clip', d, url, mediaType);
+            console.log('[multi] add clip:', url, mediaType);
+          });
+          return;
+        }
+
+        // 如果没有任何选中，则 fallback：优先视频，否则第一张图片
+        const fallbackUrl = isVideo ? (videoUrls[0] || imageUrls[0]) : (imageUrls[0] || videoUrls[0]);
+        if (!fallbackUrl) return;
+
+        const fallbackType = videoUrls.includes(fallbackUrl) ? 'video' : 'image';
+        emit('add-clip', d, fallbackUrl, fallbackType);
+        console.log('[fallback] add clip:', fallbackUrl, fallbackType);
       })
+
       .on('mouseenter', function () {
         d3.select(this).style('color', '#2563eb');
       })
@@ -2054,6 +2069,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     videoUrls.forEach((url, index) => {
       const wrapper = videoContainer.append('xhtml:div')
         .attr('class', 'media-wrapper') // 新增类名，提升样式优先级
+        .attr('data-url', url)
         .style('position', 'relative')
         .style('width', '100%')
         .style('height', '72px')          
@@ -2066,29 +2082,22 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
           ev.stopPropagation();
           ev.preventDefault();
 
+          // 记录“最后一次点击”的 url（做 fallback 用）
           selectedMediaUrl = url;
 
-          // 1) 清空所有视频缩略图的选中状态
-          videoContainer.selectAll('.media-wrapper')
-            .each(function () {
-              d3.select(this)
-                .classed('media-selected', false)
-                .style('border-color', 'transparent')
-                .select('.media-select-badge')
-                .style('opacity', '0.25');
-            });
+          // ⭐ 多选：toggle 这个 URL 是否在 Set 里
+          if (selectedMediaUrls.has(url)) {
+            selectedMediaUrls.delete(url);
+          } else {
+            selectedMediaUrls.add(url);
+          }
 
-          // 2) 当前这一个加选中样式 + 星星高亮
-          d3.select(this)
-            .classed('media-selected', true)
-            .style('border-color', mediaVideoColor)
-            .select('.media-select-badge')
-            .style('opacity', '1')
-            .style('background', mediaVideoColor)
-            .style('color', '#ffffff');
+          // 用统一函数，根据 selectedMediaUrls 更新所有 video 缩略图的边框 + 星标
+          updateMediaSelectionStyles(videoContainer, mediaVideoColor);
 
-          console.log('选中视频：', url);
+          console.log('当前选中视频集合:', Array.from(selectedMediaUrls));
         })
+
         .on('dblclick', ev => {
           ev.stopPropagation();
           ev.preventDefault();
@@ -2146,6 +2155,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     imageUrls.forEach((url, index) => {
       const wrapper = imgContainer.append('xhtml:div')
         .attr('class', 'media-wrapper') // 新增类名
+        .attr('data-url', url)
         .style('position', 'relative') 
         .style('width', '100%')
         .style('height', '72px')          
@@ -2160,26 +2170,17 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
           selectedMediaUrl = url;
 
-          imgContainer.selectAll('.media-wrapper')
-            .each(function () {
-              d3.select(this)
-                .classed('media-selected', false)
-                .style('border-color', 'transparent')
-                .select('.media-select-badge')
-                .style('opacity', '0.25');
-            });
+          if (selectedMediaUrls.has(url)) {
+            selectedMediaUrls.delete(url);
+          } else {
+            selectedMediaUrls.add(url);
+          }
 
-          // 2) 当前这一个：边框 & 星星都用 image 模态颜色
-          d3.select(this)
-            .classed('media-selected', true)
-            .style('border-color', mediaImageColor)
-            .select('.media-select-badge')
-            .style('opacity', '1')
-            .style('background', mediaImageColor)
-            .style('color', '#ffffff');
+          updateMediaSelectionStyles(imgContainer, mediaImageColor);
 
-          console.log('选中图片：', url);
+          console.log('当前选中图片集合:', Array.from(selectedMediaUrls));
         })
+
         .on('dblclick', ev => {
           ev.stopPropagation();
           ev.preventDefault();
@@ -2213,7 +2214,40 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     });
   }
 
-    /* ==================== 右下角拖拽：只改变节点高度 ==================== */
+    function updateMediaSelectionStyles(container, color) {
+    container.selectAll('.media-wrapper').each(function () {
+      const wrapper = d3.select(this);
+      const url = wrapper.attr('data-url');
+      const badge = wrapper.select('.media-select-badge');
+
+      if (!url) return;
+
+      if (selectedMediaUrls.has(url)) {
+        // ✅ 选中：边框 + 星星用对应模态颜色
+        wrapper
+          .classed('media-selected', true)
+          .style('border-color', color);
+
+        badge
+          .style('opacity', '1')
+          .style('background', color)
+          .style('color', '#ffffff');
+      } else {
+        // 未选中：恢复默认
+        wrapper
+          .classed('media-selected', false)
+          .style('border-color', 'transparent');
+
+        badge
+          .style('opacity', '0.25')
+          .style('background', 'rgba(17,24,39,0.55)')
+          .style('color', '#e5e7eb');
+      }
+    });
+  }
+
+
+  /* ==================== 右下角拖拽：只改变节点高度 ==================== */
   const resizeHandle = card.append('xhtml:div')
     .attr('class', 'node-resize-handle')
     .on('mousedown', (event) => {
