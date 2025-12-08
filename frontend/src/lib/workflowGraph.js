@@ -856,7 +856,7 @@ export function renderTree(
     const sendBtn = headerRow.append('xhtml:button')
       .html('➤')
       .attr('title','save')
-      .attr('class', 'icon-circle-btn output-clip-btn')
+      .attr('class', 'icon-circle-btn output-clip-btn send-btn-icon')
       .style('box-shadow', '0 1px 2px rgba(0,0,0,0.15)')
       .on('mousedown', ev => ev.stopPropagation())
 

@@ -1174,3 +1174,23 @@ body {
   color: #d1d5db !important;
   border-color: #e5e7eb !important;
 }
+
+/* 🔵 Output Clip Button — 专门控制图标显示 */
+.output-clip-btn {
+  font-size: 9px !important;     /* 控制图标大小 */
+  line-height: 1 !important;     /* 避免上下不居中 */
+  padding: 0 !important;         /* 避免撑大圆形 */
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* ⭐ 专门放大 ➤，不影响其他圆按钮 */
+.send-btn-icon {
+  font-size: 7px !important;  /* 原本 10px，可按需调整 11/12/13 */
+  line-height: 1 !important;
+  padding: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
