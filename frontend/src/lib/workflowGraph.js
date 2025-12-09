@@ -244,8 +244,14 @@ export function updateSelectionStyles(svgElement, selectedIds) {
  */
 function addRightClickMenu(card, d, emit) {
   card.on('contextmenu', (ev) => {
-    ev.preventDefault()
-    ev.stopPropagation()
+    // 如果在 phrase 行上右键，不弹节点级菜单
+    const target = ev.target;
+    if (target && target.closest && target.closest('.phrase-row')) {
+      return;
+    }
+
+    ev.preventDefault();
+    ev.stopPropagation();
 
     const menu = d3.select('body').append('xhtml:div')
       .style('position', 'absolute')
@@ -257,9 +263,8 @@ function addRightClickMenu(card, d, emit) {
       .style('padding', '4px 0')
       .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
       .style('z-index', '1000')
-      .style('min-width', '160px')
+      .style('min-width', '160px');
 
-    // 工具函数：添加一行菜单项
     const addMenuItem = (label, onClick) => {
       menu.append('xhtml:div')
         .style('padding', '4px 12px')
@@ -278,12 +283,10 @@ function addRightClickMenu(card, d, emit) {
         })
     }
 
-    // ① 新增 Intent Draft 节点（原始意图）
     addMenuItem('Add Intent Draft', () => {
       emit('create-card', d, 'AddText', 'util')
     })
 
-    // ② 新增 Workflow Planning 节点（细化工作流）
     addMenuItem('Add Workflow Planning', () => {
       emit('create-card', d, 'AddWorkflow', 'util')
     })
@@ -295,7 +298,6 @@ function addRightClickMenu(card, d, emit) {
     setTimeout(() => document.addEventListener('click', closeMenu), 0)
   })
 }
-
 
 /** 仅更新可见性（折叠/展开），不改变缩放与布局 */
 export function updateVisibility(svgElement, allNodes) {
@@ -1383,7 +1385,11 @@ function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
     .style('color', '#ffffff')
     .style('border-radius', '50%')
     .style('font-size', '16px')
-    .style('line-height', '32px')
+    .style('display', 'flex')
+    .style('align-items', 'center')
+    .style('justify-content', 'center')
+    .style('padding', '0')
+    .style('line-height', '1')
     .style('flex-shrink', '0')
     .style('cursor', mediaUrl ? 'pointer' : 'not-allowed')
     .style('user-select', 'none')
@@ -1638,24 +1644,68 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
       .filter(p => p.text.trim());
   };
 
-  /* ---------- Positive Prompt ---------- */
+    /* ---------- Positive Prompt ---------- */
   const positiveSection = left.append('xhtml:div')
     .attr('class', 'input-section input-section--primary');
 
+  // 在闭包里维护当前的 positive phrases 数组
+  let positivePhrases = parsePrompt(params.positive_prompt || params.text || '');
   let positiveCollapsed = false;
-  let positiveHasContent = false;   // ★ 是否有内容，用来控制是否可点
 
   const positiveHeader = positiveSection.append('xhtml:div')
     .attr('class', 'prompt-section-header')
     .on('mousedown', ev => ev.stopPropagation())
     .on('click', ev => {
       ev.stopPropagation();
-      // ★ 没有内容时，仿 Input Images：三角灰色且不可展开
-      if (!positiveHasContent) return;
+      if (!positivePhrases.length) return;  // 没内容时不能折叠 / 展开
 
       positiveCollapsed = !positiveCollapsed;
       positivePromptContainer.style('display', positiveCollapsed ? 'none' : 'block');
       positiveToggle.text(positiveCollapsed ? '▸' : '▾');
+    })
+    // ⭐ 标题右键：只用于“新增一行”
+    .on('contextmenu', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const menu = d3.select('body').append('xhtml:div')
+        .style('position', 'absolute')
+        .style('left', `${ev.pageX}px`)
+        .style('top', `${ev.pageY}px`)
+        .style('background', 'white')
+        .style('border', '1px solid #e5e7eb')
+        .style('border-radius', '4px')
+        .style('padding', '4px 0')
+        .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
+        .style('z-index', '1000')
+        .style('min-width', '180px');
+
+      const addMenuItem = (label, onClick) => {
+        menu.append('xhtml:div')
+          .style('padding', '4px 12px')
+          .style('cursor', 'pointer')
+          .style('font-size', '12px')
+          .style('color', '#374151')
+          .on('mouseenter', function () { d3.select(this).style('background', '#f3f4f6') })
+          .on('mouseleave', function () { d3.select(this).style('background', 'transparent') })
+          .text(label)
+          .on('click', () => {
+            onClick();
+            menu.remove();
+          });
+      };
+
+      addMenuItem('Add positive phrase', () => {
+        // 标题右键新增：在“标题下面”插入一行 => 插到数组最前面
+        positivePhrases.unshift({ text: '', weight: 1.0 });
+        syncPositiveParamsAndRender();
+      });
+
+      const closeMenu = () => {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      };
+      setTimeout(() => document.addEventListener('click', closeMenu), 0);
     });
 
   const positiveToggle = positiveHeader.append('xhtml:span')
@@ -1673,11 +1723,10 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   const positivePromptContainer = positiveSection.append('xhtml:div')
     .attr('class', 'prompt-section-body');
 
-  // ★ 根据是否有内容，统一更新三角样式和折叠状态
-  const updatePositiveToggleState = (hasContent) => {
-    positiveHasContent = hasContent;
+  const updatePositiveCount = () => {
+    positiveCountSpan.text(`(${positivePhrases.length})`);
 
-    if (!hasContent) {
+    if (!positivePhrases.length) {
       positiveCollapsed = true;
       positivePromptContainer.style('display', 'none');
       positiveToggle.text('▸')
@@ -1685,41 +1734,89 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
         .style('cursor', 'default');
     } else {
       positiveToggle
-        .style('color', '#9ca3af')     // 和你 CSS 的风格保持一致
+        .style('color', '#9ca3af')
         .style('cursor', 'pointer');
-      // 默认展开
       positiveCollapsed = false;
       positivePromptContainer.style('display', 'block');
       positiveToggle.text('▾');
     }
   };
 
-  const updatePositiveCount = (phrases) => {
-    positiveCountSpan.text(`(${phrases.length})`);
-    updatePositiveToggleState(phrases.length > 0);
-  };
-
-  const updatePositivePrompt = (phrases) => {
-    const updatedPrompt = phrases
+  const syncPositiveParamsAndRender = () => {
+    const updatedPrompt = positivePhrases
       .filter(p => p.text.trim())
       .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`)
       .join(', ');
+
     params.positive_prompt = updatedPrompt;
     emit('update-node-parameters', d.id, { ...params });
-    updatePositiveCount(phrases);
+
+    updatePositiveCount();
+    renderPositivePhraseRows();
   };
 
   const renderPositivePhraseRows = () => {
     positivePromptContainer.selectAll('*').remove();
-    const phrases = parsePrompt(params.positive_prompt || params.text || '');
-    updatePositiveCount(phrases);
 
-    // ★ 没有 phrase 时，直接返回（不渲染行，只是让三角变灰 & 不可点）
-    if (!phrases.length) return;
+    if (!positivePhrases.length) {
+      updatePositiveCount();
+      return;
+    }
 
-    phrases.forEach(phrase => {
+    updatePositiveCount();
+
+    positivePhrases.forEach((phrase, idx) => {
       const row = positivePromptContainer.append('xhtml:div')
         .attr('class', 'phrase-row');
+
+      // ⭐ phrase 行右键：新增（当前行下面）+ 删除
+      row.on('contextmenu', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        const menu = d3.select('body').append('xhtml:div')
+          .style('position', 'absolute')
+          .style('left', `${ev.pageX}px`)
+          .style('top', `${ev.pageY}px`)
+          .style('background', 'white')
+          .style('border', '1px solid #e5e7eb')
+          .style('border-radius', '4px')
+          .style('padding', '4px 0')
+          .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
+          .style('z-index', '1000')
+          .style('min-width', '180px');
+
+        const addMenuItem = (label, onClick) => {
+          menu.append('xhtml:div')
+            .style('padding', '4px 12px')
+            .style('cursor', 'pointer')
+            .style('font-size', '12px')
+            .style('color', '#374151')
+            .on('mouseenter', function () { d3.select(this).style('background', '#f3f4f6') })
+            .on('mouseleave', function () { d3.select(this).style('background', 'transparent') })
+            .text(label)
+            .on('click', () => {
+              onClick();
+              menu.remove();
+            });
+        };
+
+        addMenuItem('Add positive phrase below', () => {
+          positivePhrases.splice(idx + 1, 0, { text: '', weight: 1.0 });
+          syncPositiveParamsAndRender();
+        });
+
+        addMenuItem('Delete this positive phrase', () => {
+          positivePhrases.splice(idx, 1);   // 可以删到 0 行
+          syncPositiveParamsAndRender();
+        });
+
+        const closeMenu = () => {
+          menu.remove();
+          document.removeEventListener('click', closeMenu);
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+      });
 
       row.append('xhtml:input')
         .attr('class', 'phrase-input')
@@ -1727,8 +1824,8 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
         .attr('value', phrase.text)
         .on('mousedown', ev => ev.stopPropagation())
         .on('input', function () {
-          phrase.text = this.value;
-          updatePositivePrompt(phrases);
+          positivePhrases[idx].text = this.value;
+          syncPositiveParamsAndRender();
         });
 
       row.append('xhtml:input')
@@ -1744,33 +1841,76 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
           if (isNaN(val)) val = 1.0;
           val = Math.min(1.9, Math.max(0.0, val));
           this.value = val.toFixed(1);
-          phrase.weight = val;
-          updatePositivePrompt(phrases);
+          positivePhrases[idx].weight = val;
+          syncPositiveParamsAndRender();
         });
     });
   };
 
-  // 初次渲染：内部会根据内容长度自动决定灰色/可点击状态
+  // 初次渲染
   renderPositivePhraseRows();
 
+
   /* ---------- Negative Prompt ---------- */
-    /* ---------- Negative Prompt ---------- */
   const negativeSection = left.append('xhtml:div')
     .attr('class', 'input-section');
 
+  let negativePhrases = parsePrompt(params.negative_prompt || '');
   let negativeCollapsed = false;
-  let negativeHasContent = false;
 
   const negativeHeader = negativeSection.append('xhtml:div')
     .attr('class', 'prompt-section-header')
     .on('mousedown', ev => ev.stopPropagation())
     .on('click', ev => {
       ev.stopPropagation();
-      if (!negativeHasContent) return;  // ★ 无内容时禁止展开
+      if (!negativePhrases.length) return;
 
       negativeCollapsed = !negativeCollapsed;
       negativePromptContainer.style('display', negativeCollapsed ? 'none' : 'block');
       negativeToggle.text(negativeCollapsed ? '▸' : '▾');
+    })
+    // ⭐ 标题右键：只“新增 negative phrase”
+    .on('contextmenu', (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+
+      const menu = d3.select('body').append('xhtml:div')
+        .style('position', 'absolute')
+        .style('left', `${ev.pageX}px`)
+        .style('top', `${ev.pageY}px`)
+        .style('background', 'white')
+        .style('border', '1px solid #e5e7eb')
+        .style('border-radius', '4px')
+        .style('padding', '4px 0')
+        .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
+        .style('z-index', '1000')
+        .style('min-width', '190px');
+
+      const addMenuItem = (label, onClick) => {
+        menu.append('xhtml:div')
+          .style('padding', '4px 12px')
+          .style('cursor', 'pointer')
+          .style('font-size', '12px')
+          .style('color', '#374151')
+          .on('mouseenter', function () { d3.select(this).style('background', '#f3f4f6') })
+          .on('mouseleave', function () { d3.select(this).style('background', 'transparent') })
+          .text(label)
+          .on('click', () => {
+            onClick();
+            menu.remove();
+          });
+      };
+
+      addMenuItem('Add negative phrase', () => {
+        negativePhrases.unshift({ text: '', weight: 1.0 });
+        syncNegativeParamsAndRender();
+      });
+
+      const closeMenu = () => {
+        menu.remove();
+        document.removeEventListener('click', closeMenu);
+      };
+      setTimeout(() => document.addEventListener('click', closeMenu), 0);
     });
 
   const negativeToggle = negativeHeader.append('xhtml:span')
@@ -1788,10 +1928,10 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
   const negativePromptContainer = negativeSection.append('xhtml:div')
     .attr('class', 'prompt-section-body');
 
-  const updateNegativeToggleState = (hasContent) => {
-    negativeHasContent = hasContent;
+  const updateNegativeCount = () => {
+    negativeCountSpan.text(`(${negativePhrases.length})`);
 
-    if (!hasContent) {
+    if (!negativePhrases.length) {
       negativeCollapsed = true;
       negativePromptContainer.style('display', 'none');
       negativeToggle.text('▸')
@@ -1807,31 +1947,81 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     }
   };
 
-  const updateNegativeCount = (phrases) => {
-    negativeCountSpan.text(`(${phrases.length})`);
-    updateNegativeToggleState(phrases.length > 0);
-  };
-
-  const updateNegativePrompt = (phrases) => {
-    const updatedPrompt = phrases
+  const syncNegativeParamsAndRender = () => {
+    const updatedPrompt = negativePhrases
       .filter(p => p.text.trim())
       .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`)
       .join(', ');
+
     params.negative_prompt = updatedPrompt;
     emit('update-node-parameters', d.id, { ...params });
-    updateNegativeCount(phrases);
+
+    updateNegativeCount();
+    renderNegativePhraseRows();
   };
 
   const renderNegativePhraseRows = () => {
     negativePromptContainer.selectAll('*').remove();
-    const phrases = parsePrompt(params.negative_prompt || '');
-    updateNegativeCount(phrases);
 
-    if (!phrases.length) return;  // ★ 0 个时，不渲染行
+    if (!negativePhrases.length) {
+      updateNegativeCount();
+      return;
+    }
 
-    phrases.forEach(phrase => {
+    updateNegativeCount();
+
+    negativePhrases.forEach((phrase, idx) => {
       const row = negativePromptContainer.append('xhtml:div')
         .attr('class', 'phrase-row');
+
+      // ⭐ phrase 行右键：新增 / 删除
+      row.on('contextmenu', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        const menu = d3.select('body').append('xhtml:div')
+          .style('position', 'absolute')
+          .style('left', `${ev.pageX}px`)
+          .style('top', `${ev.pageY}px`)
+          .style('background', 'white')
+          .style('border', '1px solid #e5e7eb')
+          .style('border-radius', '4px')
+          .style('padding', '4px 0')
+          .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
+          .style('z-index', '1000')
+          .style('min-width', '190px');
+
+        const addMenuItem = (label, onClick) => {
+          menu.append('xhtml:div')
+            .style('padding', '4px 12px')
+            .style('cursor', 'pointer')
+            .style('font-size', '12px')
+            .style('color', '#374151')
+            .on('mouseenter', function () { d3.select(this).style('background', '#f3f4f6') })
+            .on('mouseleave', function () { d3.select(this).style('background', 'transparent') })
+            .text(label)
+            .on('click', () => {
+              onClick();
+              menu.remove();
+            });
+        };
+
+        addMenuItem('Add negative phrase below', () => {
+          negativePhrases.splice(idx + 1, 0, { text: '', weight: 1.0 });
+          syncNegativeParamsAndRender();
+        });
+
+        addMenuItem('Delete this negative phrase', () => {
+          negativePhrases.splice(idx, 1);
+          syncNegativeParamsAndRender();
+        });
+
+        const closeMenu = () => {
+          menu.remove();
+          document.removeEventListener('click', closeMenu);
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+      });
 
       row.append('xhtml:input')
         .attr('class', 'phrase-input')
@@ -1839,8 +2029,8 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
         .attr('value', phrase.text)
         .on('mousedown', ev => ev.stopPropagation())
         .on('input', function () {
-          phrase.text = this.value;
-          updateNegativePrompt(phrases);
+          negativePhrases[idx].text = this.value;
+          syncNegativeParamsAndRender();
         });
 
       row.append('xhtml:input')
@@ -1856,8 +2046,8 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
           if (isNaN(val)) val = 1.0;
           val = Math.min(1.9, Math.max(0.0, val));
           this.value = val.toFixed(1);
-          phrase.weight = val;
-          updateNegativePrompt(phrases);
+          negativePhrases[idx].weight = val;
+          syncNegativeParamsAndRender();
         });
     });
   };
