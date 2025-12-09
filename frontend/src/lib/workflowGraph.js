@@ -1742,7 +1742,8 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     }
   };
 
-  const syncPositiveParamsAndRender = () => {
+    // 只同步参数，但不重绘 DOM（编辑时用）
+  const syncPositiveParams = () => {
     const updatedPrompt = positivePhrases
       .filter(p => p.text.trim())
       .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`)
@@ -1750,10 +1751,15 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
     params.positive_prompt = updatedPrompt;
     emit('update-node-parameters', d.id, { ...params });
+  };
 
+  // 结构变化（新增 / 删除）时再重绘
+  const syncPositiveParamsAndRender = () => {
+    syncPositiveParams();
     updatePositiveCount();
     renderPositivePhraseRows();
   };
+
 
   const renderPositivePhraseRows = () => {
     positivePromptContainer.selectAll('*').remove();
@@ -1825,7 +1831,8 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
         .on('mousedown', ev => ev.stopPropagation())
         .on('input', function () {
           positivePhrases[idx].text = this.value;
-          syncPositiveParamsAndRender();
+          // 仅同步参数，不重渲染，避免光标丢失
+          syncPositiveParams();
         });
 
       row.append('xhtml:input')
@@ -1842,8 +1849,10 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
           val = Math.min(1.9, Math.max(0.0, val));
           this.value = val.toFixed(1);
           positivePhrases[idx].weight = val;
-          syncPositiveParamsAndRender();
+          // 同上，只同步参数
+          syncPositiveParams();
         });
+
     });
   };
 
@@ -1947,7 +1956,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     }
   };
 
-  const syncNegativeParamsAndRender = () => {
+  const syncNegativeParams = () => {
     const updatedPrompt = negativePhrases
       .filter(p => p.text.trim())
       .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`)
@@ -1955,10 +1964,14 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
 
     params.negative_prompt = updatedPrompt;
     emit('update-node-parameters', d.id, { ...params });
+  };
 
+  const syncNegativeParamsAndRender = () => {
+    syncNegativeParams();
     updateNegativeCount();
     renderNegativePhraseRows();
   };
+
 
   const renderNegativePhraseRows = () => {
     negativePromptContainer.selectAll('*').remove();
@@ -2030,7 +2043,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
         .on('mousedown', ev => ev.stopPropagation())
         .on('input', function () {
           negativePhrases[idx].text = this.value;
-          syncNegativeParamsAndRender();
+          syncNegativeParams();
         });
 
       row.append('xhtml:input')
@@ -2047,7 +2060,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
           val = Math.min(1.9, Math.max(0.0, val));
           this.value = val.toFixed(1);
           negativePhrases[idx].weight = val;
-          syncNegativeParamsAndRender();
+          syncNegativeParams();
         });
     });
   };
@@ -2774,12 +2787,13 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     const cardType = d._cardType || inferCardType(d)
 
     // Init 特例
-    if (cardType === 'init') {
+        if (cardType === 'init') {
+      // 圆形 Init 节点
       gEl.append('circle')
         .attr('r', 30)
         .attr('fill', '#fff')
         .attr('stroke', NODE_COLORS.auxBorder)
-        .attr('stroke-width', 2)
+        .attr('stroke-width', 2);
 
       gEl.append('text')
         .attr('text-anchor', 'middle')
@@ -2787,45 +2801,65 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
         .style('font-size', '14px')
         .style('fill', '#6b7280')
         .style('pointer-events', 'none')
-        .text('Init')
+        .text('Init');
 
+      // 左键：保持原来的选中逻辑
       gEl.style('cursor', 'pointer')
         .on('click', (ev) => {
-          ev.stopPropagation()
-          const selected = new Set(selectedIds)
-          if (selected.has(d.id)) selected.delete(d.id)
-          else if (selected.size < 2) selected.add(d.id)
-          emit('update:selectedIds', Array.from(selected))
-        })
+          ev.stopPropagation();
+          const selected = new Set(selectedIds);
+          if (selected.has(d.id)) selected.delete(d.id);
+          else if (selected.size < 2) selected.add(d.id);
+          emit('update:selectedIds', Array.from(selected));
+        });
 
-      const btnFo = gEl.append('foreignObject')
-        .attr('width', 20)
-        .attr('height', 20)
-        .attr('x', 35)
-        .attr('y', -15)
-        .style('overflow', 'visible')
-      btnFo.append('xhtml:button')
-        .style('background-color', '#ffffffff')
-        .style('border', '1px solid #d1d5db')
-        .style('color', '#374151')
-        .style('border-radius', '6px')
-        .style('width', '100%')
-        .style('height', '100%')
-        .style('font-size', '12px')
-        .style('font-weight', '600')
-        .style('cursor', 'pointer')
-        .style('display', 'flex')
-        .style('align-items', 'center')
-        .style('justify-content', 'center')
-        .style('user-select', 'none')
-        .html('+')
-        .on('mousedown', (ev) => ev.stopPropagation())
-        .on('click', (ev) => {
-          ev.stopPropagation()
-          emit('create-card', d, 'AddText', 'util')
-        })
-      return
+      // 右键：弹出菜单 → Add Intent Draft
+      gEl.on('contextmenu', (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+
+        const menu = d3.select('body').append('xhtml:div')
+          .style('position', 'absolute')
+          .style('left', `${ev.pageX}px`)
+          .style('top', `${ev.pageY}px`)
+          .style('background', '#ffffff')
+          .style('border', '1px solid #e5e7eb')
+          .style('border-radius', '4px')
+          .style('padding', '4px 0')
+          .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
+          .style('z-index', '1000')
+          .style('min-width', '160px');
+
+        const addMenuItem = (label, onClick) => {
+          menu.append('xhtml:div')
+            .style('padding', '4px 12px')
+            .style('cursor', 'pointer')
+            .style('font-size', '12px')
+            .style('color', '#374151')
+            .on('mouseenter', function () { d3.select(this).style('background', '#f3f4f6'); })
+            .on('mouseleave', function () { d3.select(this).style('background', 'transparent'); })
+            .text(label)
+            .on('click', () => {
+              onClick();
+              menu.remove();
+            });
+        };
+
+        addMenuItem('Add Intent Draft', () => {
+          // 和原来小加号的行为保持一致
+          emit('create-card', d, 'AddText', 'util');
+        });
+
+        const closeMenu = () => {
+          menu.remove();
+          document.removeEventListener('click', closeMenu);
+        };
+        setTimeout(() => document.addEventListener('click', closeMenu), 0);
+      });
+
+      return;
     }
+
 
     const hasIVMedia = !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0)
     const hasAudioMedia = !!(d.assets && d.assets.output && d.assets.output.audio && d.assets.output.audio.length > 0)
