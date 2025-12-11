@@ -22,6 +22,60 @@ const NODE_COLORS = {
   audioSoft:  'var(--media-audio-soft)',
 }
 
+// 允许在运行时刷新节点颜色（CSS 变量改变后调用）
+export function refreshNodeColors() {
+  NODE_COLORS.image = getCSSVar('--media-image', NODE_COLORS.image);
+  NODE_COLORS.video = getCSSVar('--media-video', NODE_COLORS.video);
+  NODE_COLORS.audio = getCSSVar('--media-audio', NODE_COLORS.audio);
+  NODE_COLORS.text = getCSSVar('--media-text', NODE_COLORS.text);
+  NODE_COLORS.auxBorder = getCSSVar('--media-aux-border', NODE_COLORS.auxBorder);
+}
+
+// ---- 可配置的布局参数（默认值与之前一致） ----
+let layoutConfig = {
+  nodesep: 100,
+  ranksep: 120,
+};
+
+// 对外暴露：更新 layoutConfig
+export function setLayoutConfig(newConfig = {}) {
+  if (typeof newConfig.nodesep === 'number') {
+    layoutConfig.nodesep = newConfig.nodesep;
+  }
+  if (typeof newConfig.ranksep === 'number') {
+    layoutConfig.ranksep = newConfig.ranksep;
+  }
+}
+
+/**
+ * 创建统一配置的 dagre graph
+ */
+function createDagreGraph() {
+  // Dagre 布局
+  const g = new dagre.graphlib.Graph()
+  g.setGraph({
+    rankdir: 'LR',
+    align: 'UL',
+    nodesep: layoutConfig.nodesep,
+    ranksep: layoutConfig.ranksep,
+    marginx: 40,
+    marginy: 40,
+  })
+  g.setDefaultEdgeLabel(() => ({}));
+
+  return g;
+}
+
+/**
+ * 读取 CSS 变量的工具函数
+ * @param {string} name - 例如 '--media-image'
+ */
+function getCSSVar(name) {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+}
+
 
 // selection shadow color is same as category color, but used in box-shadow
 function getNodeCategory(node) {
@@ -299,26 +353,81 @@ function addRightClickMenu(card, d, emit) {
   })
 }
 
-/** 仅更新可见性（折叠/展开），不改变缩放与布局 */
+/** 折叠/展开后：同时更新可见性 + 重新布局（带过渡） */
 export function updateVisibility(svgElement, allNodes) {
+  // 1) 先算出当前可见节点/边（保持你原来的折叠语义）
   const { visibleNodes, visibleLinks } = getVisibleNodesAndLinks(allNodes)
   const visibleNodeIds = new Set(visibleNodes.map(n => n.id))
   const visibleLinkIds = new Set(visibleLinks.map(l => `${l.source}->${l.target}`))
 
-  d3.select(svgElement)
-    .selectAll('.node')
+  const svg = d3.select(svgElement)
+
+  // 保留原来的显示/隐藏逻辑
+  svg.selectAll('.node')
     .style('display', d => visibleNodeIds.has(d.id) ? null : 'none')
     .each(function (d) {
       const btn = d3.select(this).select('button.collapse-btn')
       if (btn.size()) {
-        btn.text(d._collapsed ? '+' : '-')
+        btn
+          .text(d._collapsed ? '+' : '-')
           .style('color', d._collapsed ? '#E4080A' : '#9ca3af')
       }
     })
 
-  d3.select(svgElement)
-    .selectAll('.link')
+  svg.selectAll('.link')
     .style('display', d => visibleLinkIds.has(`${d.v}->${d.w}`) ? null : 'none')
+
+  // 2) 基于「可见节点」重新建一个 dagre graph
+  if (!visibleNodes.length) return
+
+  const g = createDagreGraph();
+
+  g.setDefaultEdgeLabel(() => ({}))
+
+  visibleNodes.forEach(node => {
+    const width = node.calculatedWidth || 260
+    const height = node.calculatedHeight || 140
+    g.setNode(node.id, { width, height })
+  })
+
+  visibleLinks.forEach(l => g.setEdge(l.source, l.target))
+  dagre.layout(g)
+
+  const dagreNodes = new Map(g.nodes().map(id => [id, g.node(id)]))
+  const dagreEdges = g.edges().map(e => {
+    const edgeData = g.edge(e)
+    return { v: e.v, w: e.w, points: edgeData.points }
+  })
+
+  // 3) 选中当前 layout 容器里的 nodes / links，做平滑过渡
+  const layoutGroup = svg.select('g.zoom-container')
+  const nodeSel = layoutGroup.select('g.nodes').selectAll('.node')
+  const linkSel = layoutGroup.select('g.links').selectAll('path.link')
+
+  // 节点位置过渡
+  nodeSel
+    .transition()
+    .duration(400)
+    .attr('transform', function (d) {
+      const n = dagreNodes.get(d.id)
+      if (!n) {
+        // 找不到（说明被隐藏），保持原 transform
+        return d3.select(this).attr('transform')
+      }
+      return `translate(${n.x},${n.y})`
+    })
+
+  // 连线路径过渡
+  linkSel
+    .transition()
+    .duration(400)
+    .attr('d', function (d) {
+      const match = dagreEdges.find(e => e.v === d.v && e.w === d.w)
+      if (!match) {
+        return d3.select(this).attr('d')
+      }
+      return lineGenerator(match.points)
+    })
 }
 
 /** 完整重绘（重新布局 & 初始缩放） */
@@ -328,8 +437,19 @@ export function renderTree(
   selectedIds,
   emit,
   workflowTypes,
-  viewState = null
+  viewState = null,
+  layoutOptions = null   // 新增参数：来自 WorkflowTree.vue 的布局配置
 ) {
+  // ====== 合并布局参数：外部传入的 horizontalGap / verticalGap 优先 ======
+  if (layoutOptions) {
+    if (typeof layoutOptions.horizontalGap === 'number') {
+      layoutConfig.nodesep = layoutOptions.horizontalGap
+    }
+    if (typeof layoutOptions.verticalGap === 'number') {
+      layoutConfig.ranksep = layoutOptions.verticalGap
+    }
+  }
+
   const wrapper = d3.select(svgElement)
 
   // ⭐ 优先用外部传进来的 viewState；如果没有，就从 d3 的内部 zoom 状态恢复
@@ -354,10 +474,9 @@ export function renderTree(
     return
   }
 
-  // Dagre 布局
-  const g = new dagre.graphlib.Graph()
-  g.setGraph({ rankdir: 'LR', nodesep: 100, ranksep: 120 })
-  g.setDefaultEdgeLabel(() => ({}))
+
+  // Dagre 布局（使用统一配置）
+  const g = createDagreGraph();
 
   const BASE_CARD_HEIGHT = 170
   const PROMPT_AREA_HEIGHT = 30

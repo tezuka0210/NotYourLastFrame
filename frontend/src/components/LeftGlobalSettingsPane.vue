@@ -261,6 +261,8 @@ const temperature = ref(0.7)
   transition: all 0.2s ease;
   resize: none;
   line-height: 1.5;
+  max-height: 140px;   /* ✅ 限制高度 */
+  overflow-y: auto;    /* ✅ 内容多时内部滚动 */
 }
 
 .form-textarea:focus {
