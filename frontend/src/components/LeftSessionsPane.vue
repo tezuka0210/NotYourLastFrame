@@ -140,7 +140,7 @@ function deleteSession(id: number) {
   width: 100%;
   max-width: none;     /* 关键：去掉 380px 限制 */
   margin: 0;           /* 关键：不要居中 */
-  padding: 0 0;        /* 建议：把横向 padding 交给 LeftPane 统一控制 */
+  padding: 2px 8px;        /* 建议：把横向 padding 交给 LeftPane 统一控制 */
   height: 100%;
   min-height: 0;       /* 关键：允许内部滚动区域收缩 */
 }
@@ -165,7 +165,7 @@ function deleteSession(id: number) {
 
 /* 卡片头部 */
 .card-header {
-  padding: 16px;
+  padding: 10px;
   border-bottom: 1px solid #f0f0f0;
   background: #f8f9fa;
   border-radius: 20px 20px 0 0;
@@ -175,7 +175,7 @@ function deleteSession(id: number) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 2px;
 }
 
 .header-title {
