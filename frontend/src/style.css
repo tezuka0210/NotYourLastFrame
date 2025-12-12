@@ -294,7 +294,7 @@ body {
 /* 视频轨：固定高度，防止加 clip 时轻微抖动 */
 #stitching-panel {
   min-height: 86px;
-  height: 94px;
+  /* height: 94px; */
   display: flex;
   align-items: center;
   padding-top: 10px;    /* 原来 24 */
@@ -305,7 +305,7 @@ body {
 /* 音频轨：同理 */
 #audio-stitching-panel {
   min-height: 46px;
-  height: 46px;
+  /* height: 46px; */
   display: flex;
   align-items: center;
   border-top: 1px solid #d1d5db !important; /* 灰色，与系统默认一致 */

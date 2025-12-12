@@ -1,10 +1,10 @@
 <template>
-  <div class="bg-white rounded shadow p-4">
+  <div class="stitch-card">
     <!-- <h2 class="text-l font-semibold mb-4 text-gray-700">Stitching Sequence</h2> -->
 
     <div
       id="stitching-panel-wrapper"
-      class="bg-gray-100 border border-dashed border-gray-300 min-h-[80px] overflow-x-auto overflow-y-hidden"
+      class="bg-gray-100 border border-dashed border-gray-300 flex-1 min-h-0 overflow-x-auto overflow-y-hidden"
       @wheel.prevent="handleZoom"
       @scroll="handleTimelineScroll"
     >
@@ -539,46 +539,69 @@ const getBufferMeta = (clip: any): string => {
   background: color-mix(in srgb, var(--media-audio-bg, #F4A7A8) 16%, #ffffff);
 }
 
-/* ===== Stitch 按钮样式 - 统一的灰色系 ===== */
+/* ========== Card：统一右侧 stitching 面板外观（对齐 LeftLayout） ========== */
+.stitch-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  padding: 12px; /* 比 p-4 更接近左侧紧凑风格 */
+}
+
+/* 固定整体容器背景，让四条轨道视觉一致 */
+#stitching-panel-wrapper {
+  background: #f9fafb;
+  border-radius: 10px;
+  overflow-y: visible;
+}
+
+/* ========== Stitch Button：统一 LeftLayout 的按钮语义（Apply/Confirm 风格） ========== */
 .stitch-btn {
-  margin-top: 6px;
+  margin-top: 10px;
   width: 100%;
-  padding: 4px 0;
-  background: white; /* 主灰色 */
-  color: #6b7280;
-  border: 1px solid #9ca3af;
-  border-radius: 7px; /* 统一的圆角 */
-  font-size: 14px;
-  font-weight: 500;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  background: #ffffff;
+  color: #374151;                 /* text-gray-700 */
+  border: 1px solid #d1d5db;      /* border-gray-300 */
+  border-radius: 10px;
+
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
 }
 
-/* 按钮 hover 状态 */
 .stitch-btn:not(:disabled):hover {
-  color: #242830;
-  background: white; /* 深灰色 */
-  border: 1px solid #242830;
-  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.2);
+  background: #f9fafb;            /* very light gray */
+  border-color: #111827;          /* gray-900 */
+  color: #111827;
+  box-shadow: 0 4px 12px rgba(17,24,39,0.10);
 }
 
-/* 按钮点击状态 */
 .stitch-btn:not(:disabled):active {
-  transform: scale(0.98);
+  transform: scale(0.99);
 }
 
-/* 禁用状态 */
 .stitch-btn:disabled {
-  background: #ffffff; /* 浅灰色 */
+  background: #ffffff;
+  color: #9ca3af;                 /* text-gray-400 */
+  border-color: #e5e7eb;          /* border-gray-200 */
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
 }
 
-/* 焦点状态 */
 .stitch-btn:focus {
   outline: none;
-  box-shadow: 0 0 0 2px rgba(107, 114, 128, 0.3);
+  box-shadow: 0 0 0 3px rgba(17,24,39,0.12);
 }
+
+
 </style>
 

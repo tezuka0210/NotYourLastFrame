@@ -335,7 +335,7 @@ html, body, #app {
 
 /* 中间列上下区域 */
 .center-top {
-  flex: 1;
+  flex: 1 1 0;
   min-height: 0;
   padding: 8px 8px 6px;
   box-sizing: border-box;
@@ -352,7 +352,10 @@ html, body, #app {
 .center-bottom {
   padding: 4px 8px 8px;
   box-sizing: border-box;
-  min-height: calc(32%);   /* ⭐ 半自动，只加了约 2% 的高度 */
+  flex: 0 0 32%;
+  min-height: 0;   /* 关键：允许内部子组件用 h-full 撑满 */
+  display: flex;   /* 关键：把 StitchingPanel 作为可拉伸子项 */
+  flex-direction: column;
 }
 
 .col-right {
