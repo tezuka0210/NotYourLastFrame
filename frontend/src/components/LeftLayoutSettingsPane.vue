@@ -53,7 +53,7 @@
         </div>
 
         <!-- Colors: Image Modality -->
-        <div class="form-group form-group-inline">
+        <div class="form-group form-group-inline color-row-first">
           <span class="form-label-inline">Image Modality Color</span>
           <div class="color-control">
             <input
@@ -222,7 +222,7 @@ const applySettings = () => {
   width: 100%;
   max-width: 380px;
   margin: 0 auto;
-  padding: 2px 16px;
+  padding: 2px 8px;
 }
 
 .settings-card {
@@ -238,7 +238,7 @@ const applySettings = () => {
 }
 
 .settings-header {
-  padding: 16px;
+  padding: 10px;
   border-bottom: 1px solid #f0f0f0;
   background: #f8f9fa;
 }
@@ -254,13 +254,13 @@ const applySettings = () => {
 .settings-content {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  padding: 16px;
+  overflow-y: hidden;
+  padding: 10px;
+  gap: 2px; /* 稍微压缩垂直间距 */
   display: flex;
   flex-direction: column;
-  gap: 12px; /* 稍微压缩垂直间距 */
-  scroll-behavior: smooth;
 }
+
 
 .settings-content::-webkit-scrollbar {
   width: 6px;
@@ -293,6 +293,7 @@ const applySettings = () => {
   justify-content: space-between;
   gap: 8px;
 }
+
 
 .form-label {
   font-size: 10px;
@@ -414,4 +415,10 @@ const applySettings = () => {
   outline: none;
   box-shadow: 0 0 0 2px rgba(225, 234, 252, 0.3);
 }
+
+/* ✅ 只拉开 Vertical Spacing 和第一个颜色行之间的距离 */
+.color-row-first {
+  margin-top: 2px; /* 建议 4–8px，你现在这个 UI 用 6px 很合适 */
+}
+
 </style>

@@ -160,6 +160,45 @@ function setCardSelected(cardSel, nodeData, isSelected) {
   // 不再在这里写 box-shadow，避免覆盖你在 CSS 里的
 }
 
+/** 折叠状态：按钮“颜色反转” */
+function applyCollapseBtnStyle(btnSel, isCollapsed) {
+  // collapsed: 反转（深底白字）；expanded: 普通（白底灰字）
+  if (isCollapsed) {
+    btnSel
+      .style('background', '#6b7280')   // gray-500
+      .style('color', '#ffffff')
+      .style('border-color', '#4b5563') // gray-600
+  } else {
+    btnSel
+      .style('background', '#ffffff')
+      .style('color', '#9ca3af')        // gray-400
+      .style('border-color', '#e5e7eb')
+  }
+}
+
+function applyCollapseBtnHoverStyle(btnSel, isCollapsed) {
+  // hover 不改变语义，只做轻微强调
+  if (isCollapsed) {
+    // collapsed 状态 hover：稍微更深一点
+    btnSel
+      .style('background', '#4b5563')   // gray-600
+      .style('color', '#ffffff')
+      .style('border-color', '#374151') // gray-700
+  } else {
+    // expanded 状态 hover：轻微灰底提示可点
+    btnSel
+      .style('background', '#f3f4f6')   // gray-100
+      .style('color', '#6b7280')        // gray-500
+      .style('border-color', '#d1d5db') // gray-300
+  }
+}
+
+/** 统一：collapsed 节点强制视为“视觉选中” */
+function isVisuallySelected(nodeData, selectedIds = []) {
+  return !!(nodeData && (nodeData._collapsed || selectedIds.includes(nodeData.id)))
+}
+
+
 const lineGenerator = d3.line()
   .x(d => d.x)
   .y(d => d.y)
@@ -249,8 +288,9 @@ export function updateSelectionStyles(svgElement, selectedIds) {
       const card = d3.select(this).select('.node-card')
       if (card.empty()) return
 
-      const isSelected = selectedIds.includes(d.id)
+      const isSelected = isVisuallySelected(d, selectedIds)
       setCardSelected(card, d, isSelected)
+
     })
 }
 
@@ -332,9 +372,9 @@ export function updateVisibility(svgElement, allNodes) {
     .each(function (d) {
       const btn = d3.select(this).select('button.collapse-btn')
       if (btn.size()) {
-        btn
-          .text(d._collapsed ? '+' : '-')
-          .style('color', d._collapsed ? '#E4080A' : '#9ca3af')
+        btn.text(d._collapsed ? '+' : '-')
+        applyCollapseBtnStyle(btn, !!d._collapsed)
+
       }
     })
 
@@ -828,68 +868,74 @@ export function renderTree(
         .style('height', '18px')
         .style('border-radius', '999px')
         .style('border', '1px solid #e5e7eb')
-        .style('background', '#ffffff')
         .style('font-size', '12px')
         .style('line-height', '1')
         .style('display', 'inline-flex')
         .style('align-items', 'center')
         .style('justify-content', 'center')
-        .style('color', d._collapsed ? '#E4080A' : '#9ca3af')
         .style('cursor', 'pointer')
         .style('user-select', 'none')
         .on('mousedown', ev => ev.stopPropagation())
         .on('click', ev => {
-          ev.stopPropagation()
-          emit('toggle-collapse', d.id)
+          ev.stopPropagation();
+
+          // ✅ 乐观更新：立即反映到按钮 UI，避免 hover 覆盖和异步闪烁
+          const nextCollapsed = !d._collapsed;
+          d._collapsed = nextCollapsed; // 关键：让 mouseleave/hover 读取到新状态
+
+          collapseBtn.text(nextCollapsed ? '+' : '-');
+          applyCollapseBtnStyle(collapseBtn, nextCollapsed);
+
+          emit('toggle-collapse', d.id);
         })
+
+        applyCollapseBtnStyle(collapseBtn, !!d._collapsed)
+
+        collapseBtn
         .on('mouseenter', function () {
-          d3.select(this)
-            .style('background', '#6b7280')   // gray-500
-            .style('color', '#ffffff')
-            .style('border-color', '#4b5563') // gray-600
+          applyCollapseBtnHoverStyle(d3.select(this), !!d._collapsed);
         })
         .on('mouseleave', function () {
-          d3.select(this)
-            .style('background', '#ffffff')
-            .style('color', d._collapsed ? '#E4080A' : '#9ca3af')
-            .style('border-color', '#e5e7eb')
+          // ✅ 永远回到“真实状态样式”
+          applyCollapseBtnStyle(d3.select(this), !!d._collapsed);
         })
+
     }
 
     // 复制（和其他节点一样）
-    const cloneHeaderBtn = toolbar.append('xhtml:button')
-      .text('+')
-      .style('width', '18px')
-      .style('height', '18px')
-      .style('border-radius', '999px')
-      .style('border', '1px solid #e5e7eb')
-      .style('background', '#ffffff')
-      .style('font-size', '12px')
-      .style('line-height', '1')
-      .style('display', 'inline-flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('color', '#6b7280')
-      .style('cursor', 'pointer')
-      .style('user-select', 'none')
-      .on('mousedown', ev => ev.stopPropagation())
-      .on('click', ev => {
-        ev.stopPropagation()
-        // TODO: clone node
-        console.log('[TODO] clone node', d.id)
-      })
-      .on('mouseenter', function () {
-        d3.select(this)
-          .style('background', '#6b7280')
-          .style('color', '#ffffff')
-          .style('border-color', '#4b5563')
-      })
-      .on('mouseleave', function () {
-        d3.select(this)
-          .style('background', '#ffffff')
-          .style('color', '#6b7280')
-          .style('border-color', '#e5e7eb')
-      })
+    // const cloneHeaderBtn = toolbar.append('xhtml:button')
+    //   .text('+')
+    //   .style('width', '18px')
+    //   .style('height', '18px')
+    //   .style('border-radius', '999px')
+    //   .style('border', '1px solid #e5e7eb')
+    //   .style('background', '#ffffff')
+    //   .style('font-size', '12px')
+    //   .style('line-height', '1')
+    //   .style('display', 'inline-flex')
+    //   .style('align-items', 'center')
+    //   .style('justify-content', 'center')
+    //   .style('color', '#6b7280')
+    //   .style('cursor', 'pointer')
+    //   .style('user-select', 'none')
+    //   .on('mousedown', ev => ev.stopPropagation())
+    //   .on('click', ev => {
+    //     ev.stopPropagation()
+    //     // TODO: clone node
+    //     console.log('[TODO] clone node', d.id)
+    //   })
+    //   .on('mouseenter', function () {
+    //     d3.select(this)
+    //       .style('background', '#6b7280')
+    //       .style('color', '#ffffff')
+    //       .style('border-color', '#4b5563')
+    //   })
+    //   .on('mouseleave', function () {
+    //     d3.select(this)
+    //       .style('background', '#ffffff')
+    //       .style('color', '#6b7280')
+    //       .style('border-color', '#e5e7eb')
+    //   })
 
     // 删除（关闭），同样保持一致
     const deleteHeaderBtn = toolbar.append('xhtml:button')
@@ -975,7 +1021,7 @@ export function renderTree(
       .style('-webkit-user-select', 'none')
 
     // 选中样式（保留原逻辑）
-    setCardSelected(card, d, selectedIds.includes(d.id))
+    setCardSelected(card, d, isVisuallySelected(d, selectedIds))
 
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button')) return
@@ -1102,7 +1148,7 @@ export function renderTree(
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
 
-    setCardSelected(card, d, selectedIds.includes(d.id))
+    setCardSelected(card, d, isVisuallySelected(d, selectedIds))
 
     card.on('click', ev => {
       if (
@@ -1390,7 +1436,7 @@ function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
     .style('user-select', 'none')
     .style('-webkit-user-select', 'none');
 
-  setCardSelected(card, d, selectedIds.includes(d.id));
+  setCardSelected(card, d, isVisuallySelected(d, selectedIds))
 
   card.on('click', ev => {
     if (ev.target && ev.target.closest && ev.target.closest('button, input, textarea, video, img')) return;
@@ -1682,7 +1728,7 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
     .style('-webkit-user-select', 'none')
 
   // 初始选中状态
-  setCardSelected(card, d, selectedIds.includes(d.id))
+  setCardSelected(card, d, isVisuallySelected(d, selectedIds))
 
   addRightClickMenu(card, d, emit);
 
@@ -2692,7 +2738,7 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     .style('user-select', 'none')
     .style('-webkit-user-select', 'none')
 
-  setCardSelected(card, d, selectedIds.includes(d.id))
+  setCardSelected(card, d, isVisuallySelected(d, selectedIds))
 
   card.on('click', ev => {
     if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return

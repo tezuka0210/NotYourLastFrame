@@ -41,7 +41,7 @@ const handleApplyLayoutSettings = (payload: {
 .left-grid{
   display: grid;
   grid-template-rows: minmax(0, 1fr) var(--lg-h) var(--ll-h);
-  gap: 12px; /* 等价于 space-y-3，更可控 */
+
   min-height: 0;
 }
 

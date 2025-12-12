@@ -96,7 +96,7 @@ const temperature = ref(0.7)
   width: 100%;
   max-width: 380px;
   margin: 0 auto;
-  padding: 2px 16px;
+  padding: 2px 8px;
 }
 
 /* 设置卡片主体 - 视觉统一 */
@@ -114,7 +114,7 @@ const temperature = ref(0.7)
 
 /* 卡片头部 - 统一内边距 */
 .settings-header {
-  padding: 16px;
+  padding: 10px;
   border-bottom: 1px solid #f0f0f0;
   background: #f8f9fa;
 }
