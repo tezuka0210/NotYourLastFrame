@@ -55,7 +55,7 @@ function createDagreGraph() {
   const g = new dagre.graphlib.Graph()
   g.setGraph({
     rankdir: 'LR',
-    align: 'UL',
+    // align: 'UL',
     nodesep: layoutConfig.nodesep,
     ranksep: layoutConfig.ranksep,
     marginx: 40,
@@ -359,6 +359,8 @@ export function updateVisibility(svgElement, allNodes) {
   dagre.layout(g)
 
   const dagreNodes = new Map(g.nodes().map(id => [id, g.node(id)]));
+  // 新增：把原始节点数据建一个 map，方便判断是不是 Init
+  const nodeDataMap = new Map(visibleNodes.map(n => [n.id, n]));
 
   const dagreEdges = g.edges().map(e => {
     const edgeData = g.edge(e);
@@ -369,22 +371,40 @@ export function updateVisibility(svgElement, allNodes) {
       return { v: e.v, w: e.w, points: [] };
     }
 
-    // 拷贝一份点数组，避免直接改 dagre 内部对象
     const pts = edgeData.points.map(p => ({ x: p.x, y: p.y }));
     const first = pts[0];
     const last  = pts[pts.length - 1];
 
-    // 起点：source 卡片右侧中点
-    first.x = src.x + (src.width || 0) / 2;
-    // first.y 保持原样（dagre 已算好转折）
+    const srcData = nodeDataMap.get(e.v) || {};
+    const tgtData = nodeDataMap.get(e.w) || {};
 
-    // 终点：target 卡片左侧中点
-    last.x = tgt.x - (tgt.width || 0) / 2;
-    // last.y 同样不动
+    const isSrcInit = (srcData.module_id === 'Init') || inferCardType(srcData) === 'init';
+    const isTgtInit = (tgtData.module_id === 'Init') || inferCardType(tgtData) === 'init';
+
+    // ===== 起点处理 =====
+    if (isSrcInit) {
+      // Init：从圆心出发
+      first.x = src.x;
+      first.y = src.y;
+    } else {
+      // 普通节点：右侧中点
+      first.x = src.x + (src.width || 0) / 2;
+      // first.y 用 dagre 原来的，保留转折
+    }
+
+    // ===== 终点处理 =====
+    if (isTgtInit) {
+      // 如果以后有指向 Init 的边，也从圆心结束
+      last.x = tgt.x;
+      last.y = tgt.y;
+    } else {
+      // 普通节点：左侧中点
+      last.x = tgt.x - (tgt.width || 0) / 2;
+      // last.y 保持原样
+    }
 
     return { v: e.v, w: e.w, points: pts };
   });
-
 
   // 3) 选中当前 layout 容器里的 nodes / links，做平滑过渡
   const layoutGroup = svg.select('g.zoom-container')
@@ -529,6 +549,7 @@ export function renderTree(
   dagre.layout(g)
 
   const dagreNodes = new Map(g.nodes().map(id => [id, g.node(id)]));
+  const nodeDataMap = new Map(visibleNodes.map(n => [n.id, n]));
 
   const dagreEdges = g.edges().map(e => {
     const edgeData = g.edge(e);
@@ -539,21 +560,33 @@ export function renderTree(
       return { v: e.v, w: e.w, points: [] };
     }
 
-    // 拷贝一份点数组，避免直接改 dagre 内部对象
     const pts = edgeData.points.map(p => ({ x: p.x, y: p.y }));
     const first = pts[0];
     const last  = pts[pts.length - 1];
 
-    // 起点：source 卡片右侧中点
-    first.x = src.x + (src.width || 0) / 2;
-    // first.y 保持原样（dagre 已算好转折）
+    const srcData = nodeDataMap.get(e.v) || {};
+    const tgtData = nodeDataMap.get(e.w) || {};
 
-    // 终点：target 卡片左侧中点
-    last.x = tgt.x - (tgt.width || 0) / 2;
-    // last.y 同样不动
+    const isSrcInit = (srcData.module_id === 'Init') || inferCardType(srcData) === 'init';
+    const isTgtInit = (tgtData.module_id === 'Init') || inferCardType(tgtData) === 'init';
+
+    if (isSrcInit) {
+      first.x = src.x;
+      first.y = src.y;
+    } else {
+      first.x = src.x + (src.width || 0) / 2;
+    }
+
+    if (isTgtInit) {
+      last.x = tgt.x;
+      last.y = tgt.y;
+    } else {
+      last.x = tgt.x - (tgt.width || 0) / 2;
+    }
 
     return { v: e.v, w: e.w, points: pts };
   });
+
 
 
   // SVG 容器与缩放
