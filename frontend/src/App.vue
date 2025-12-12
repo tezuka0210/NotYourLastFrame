@@ -350,9 +350,9 @@ html, body, #app {
 }
 
 .center-bottom {
-  padding: 4px 8px 8px;
+  padding: 4px 8px;
   box-sizing: border-box;
-  flex: 0 0 32%;
+  /* flex: 0 0 32%; */
   min-height: 0;   /* 关键：允许内部子组件用 h-full 撑满 */
   display: flex;   /* 关键：把 StitchingPanel 作为可拉伸子项 */
   flex-direction: column;

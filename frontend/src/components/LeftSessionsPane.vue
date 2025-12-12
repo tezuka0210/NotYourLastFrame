@@ -138,10 +138,11 @@ function deleteSession(id: number) {
 /* 容器样式：和另外两张卡片保持一致，高度由父级 h-full 控制 */
 .container {
   width: 100%;
-  max-width: 380px;
-  margin: 0 auto;
-  padding: 2px 16px;       /* ✅ 和另外两个 pane 对齐 */
-  height: 100%;            /* ✅ 让 card 可以用 flex-1 撑满 */
+  max-width: none;     /* 关键：去掉 380px 限制 */
+  margin: 0;           /* 关键：不要居中 */
+  padding: 0 0;        /* 建议：把横向 padding 交给 LeftPane 统一控制 */
+  height: 100%;
+  min-height: 0;       /* 关键：允许内部滚动区域收缩 */
 }
 
 /* 卡片主体：改成 flex column + height:100% */
