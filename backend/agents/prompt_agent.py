@@ -127,7 +127,7 @@ Instructions for Weighted Tag Generation:
    - For Frame manipulation: Higher weight (1.5-1.8) for frame rate and smoothness terms.
    - Format: `(keyword:weight)`.
 3. **Formatting Rules:**
-   - **Positive:** Comma-separated phrases (≤5 words each). Focus on movement, camera, lighting, style, frame control.
+   - **Positive:** Comma-separated phrases (≤5 words each). Focus on movement, camera, lighting, style, frame control. Emphasizing that style is photographic.
    - **Negative:** Video-specific quality artifacts (e.g., "jerky motion, low frame rate, frame stutter").
    - Output ONLY valid JSON.
 

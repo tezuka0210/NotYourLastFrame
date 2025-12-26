@@ -74,9 +74,10 @@ interface Session {
 
 // 模拟数据
 const sessions = ref<Session[]>([
-  { id: 1, title: 'Guqin' },
-  { id: 2, title: 'Three colored camel figurines carrying music' },
-  { id: 3, title: 'New Exploration' }
+  { id: 1, title: 'New Session'},
+  { id: 2, title: 'Guqin' },
+  { id: 3, title: 'Three colored camel figurines carrying music' }
+  //{ id: 3, title: 'New Exploration' }
 ])
 
 const currentSessionId = ref<number>(1)
