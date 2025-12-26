@@ -2042,23 +2042,23 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
           syncPositiveParams();
         });
 
-      row.append('xhtml:input')
-        .attr('class', 'weight-input')
-        .attr('type', 'number')
-        .attr('min', '0.0')
-        .attr('max', '1.9')
-        .attr('step', '0.1')
-        .attr('value', phrase.weight.toFixed(1))
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('input', function () {
-          let val = parseFloat(this.value);
-          if (isNaN(val)) val = 1.0;
-          val = Math.min(1.9, Math.max(0.0, val));
-          this.value = val.toFixed(1);
-          positivePhrases[idx].weight = val;
-          // 同上，只同步参数
-          syncPositiveParams();
-        });
+      // row.append('xhtml:input')
+      //   .attr('class', 'weight-input')
+      //   .attr('type', 'number')
+      //   .attr('min', '0.0')
+      //   .attr('max', '1.9')
+      //   .attr('step', '0.1')
+      //   .attr('value', phrase.weight.toFixed(1))
+      //   .on('mousedown', ev => ev.stopPropagation())
+      //   .on('input', function () {
+      //     let val = parseFloat(this.value);
+      //     if (isNaN(val)) val = 1.0;
+      //     val = Math.min(1.9, Math.max(0.0, val));
+      //     this.value = val.toFixed(1);
+      //     positivePhrases[idx].weight = val;
+      //     // 同上，只同步参数
+      //     syncPositiveParams();
+      //   });
 
     });
   };
@@ -2253,22 +2253,22 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
           syncNegativeParams();
         });
 
-      row.append('xhtml:input')
-        .attr('class', 'weight-input')
-        .attr('type', 'number')
-        .attr('min', '0.0')
-        .attr('max', '1.9')
-        .attr('step', '0.1')
-        .attr('value', phrase.weight.toFixed(1))
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('input', function () {
-          let val = parseFloat(this.value);
-          if (isNaN(val)) val = 1.0;
-          val = Math.min(1.9, Math.max(0.0, val));
-          this.value = val.toFixed(1);
-          negativePhrases[idx].weight = val;
-          syncNegativeParams();
-        });
+      // row.append('xhtml:input')
+      //   .attr('class', 'weight-input')
+      //   .attr('type', 'number')
+      //   .attr('min', '0.0')
+      //   .attr('max', '1.9')
+      //   .attr('step', '0.1')
+      //   .attr('value', phrase.weight.toFixed(1))
+      //   .on('mousedown', ev => ev.stopPropagation())
+      //   .on('input', function () {
+      //     let val = parseFloat(this.value);
+      //     if (isNaN(val)) val = 1.0;
+      //     val = Math.min(1.9, Math.max(0.0, val));
+      //     this.value = val.toFixed(1);
+      //     negativePhrases[idx].weight = val;
+      //     syncNegativeParams();
+      //   });
     });
   };
 
