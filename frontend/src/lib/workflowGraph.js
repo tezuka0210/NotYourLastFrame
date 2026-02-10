@@ -7,7 +7,7 @@ import { workflowParameters } from '@/lib/useWorkflowForm.js';
 import { setPrevAgentContext, clearPrevAgentContext } from '@/lib/agentSharedState.js';
 
 // --- link color: light gray for all edges ---
-const defaultLinkColor = '#D1D5DB' // gray-300
+const defaultLinkColor = '#D1D5DB' // gray-300 #D1D5DB
 
 // --- node category palette (paper-friendly, from CSS variables) ---
 const NODE_COLORS = {
@@ -516,7 +516,7 @@ export function renderTree(
     wrapper.append('text')
       .attr('x', '50%').attr('y', '50%')
       .attr('text-anchor', 'middle')
-      .attr('fill', '#9ca3af')
+      .attr('fill', '#ffffffff')//#9ca3af
       .text('No workflow yet. Generate nodes to start.')
     return
   }
