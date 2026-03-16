@@ -20,6 +20,7 @@ import random
 import sys
 import base64
 from pathlib import Path
+from urllib.parse import urlparse,parse_qs
 # 将agents文件夹添加到Python路径（确保能导入）
 sys.path.append(str(Path(__file__).parent / "agents"))
 from agents.utils import get_all_workflow_names
@@ -28,6 +29,8 @@ from agents.knowledge_agent import knowledge_agent_node
 from agents.workflow_agent import workflow_selector_node
 from agents.prompt_agent import prompt_agent_node
 from agents.final_prompt_agent import final_prompt_agent_node 
+from agents.sam_agent import SAMAgent
+from agents.entity_agent import EntityAgent
 
 
 # --- 1. 初始化与配置 ---
@@ -35,6 +38,8 @@ from agents.final_prompt_agent import final_prompt_agent_node
 load_dotenv()
 app = Flask(__name__, template_folder='templates')
 CORS(app)
+sam_service = SAMAgent()
+entity_v_agent = EntityAgent()
 
 # --- 模式开关 ----
 APP_MODE = os.getenv('APP_MODE', 'server') 
@@ -1248,39 +1253,187 @@ def create_node():
         print(f"执行 ComfyUI 工作流或数据库操作时发生未知错误: {e}")
         return jsonify({"error": "执行工作流时发生内部错误。"}), 500
 
-    node_data = database.get_node(node_id)
-    if not node_data:
-        print(f"节点 {node_id} 不存在于数据库中")
-        return []
+    # node_data = database.get_node(node_id)
+    # if not node_data:
+    #     print(f"节点 {node_id} 不存在于数据库中")
+    #     return []
 
-    # 1. 原样获取节点已有的 assets（包括 input 所有内容，不做任何修改）
-    existing_assets = node_data.get('assets', {})
+    # # 1. 原样获取节点已有的 assets（包括 input 所有内容，不做任何修改）
+    # existing_assets = node_data.get('assets', {})
 
-    # 2. 构建新的 assets：保留原有所有内容，仅新增/更新 output 字段
-    assets_with_output = {
-        **existing_assets,  # 解构原有 assets（原样保留 input 及其他所有字段）
-        "output": outputs   # 新增/覆盖 output 字段（生成结果）
-    }
+    # # 2. 构建新的 assets：保留原有所有内容，仅新增/更新 output 字段
+    # assets_with_output = {
+    #     **existing_assets,  # 解构原有 assets（原样保留 input 及其他所有字段）
+    #     "output": outputs   # 新增/覆盖 output 字段（生成结果）
+    # }
 
 
-    # --- 在数据库中记录新节点 ---
-    database.update_node(
-        node_id=node_id,
-        payload={
+    # # --- 在数据库中记录新节点 ---
+    # database.update_node(
+    #     node_id=node_id,
+    #     payload={
+    #             "title": node_title,
+    #             "module_id": final_module_id,
+    #             "assets": assets_with_output,
+    #             "parameters": parameters,
+    #             "status":'completed'
+    #         }
+
+    # )
+    # --- 在 create_node 函数内部 ---
+
+
+
+    if outputs:
+        raw_path = outputs.get('images') # 就是你打印出的那个字符串
+        if raw_path:
+            # 1. 解析 URL
+            parsed_url = urlparse(raw_path[0])
+            # 2. 提取查询参数 (parse_qs 返回的是字典，值是列表)
+            params = parse_qs(parsed_url.query)
+            
+            # 3. 获取真正的文件名
+            filename = params.get('filename', [None])[0]
+            
+            if filename:
+                generated_image_rel_path = filename
+                print(f"🎯 成功解析文件名: {generated_image_rel_path}")
+                
+                # 现在进行路径拼接就不会报错了
+                generated_image_path = os.path.join(COMFYUI_OUTPUT_PATH, generated_image_rel_path)
+                print(generated_image_path)
+            else:
+                print("❌ 无法从路径中解析出 filename 参数")
+                # 错误处理逻辑
+        else:
+            print("❌ output_image 字段为空")
+
+         # 从生成图片中得出要扣的对象
+        entity_output_dir = "entities"
+        user_prompt = parameters.get('positive_prompt', '')
+        target_subjects = entity_v_agent.detect_entities_from_vision(
+            image_path=generated_image_path, 
+            original_prompt=user_prompt
+        )
+        
+
+        # 3. 执行 SAM 3 分割
+        print(f"🎨 正在对节点 {node_id} 进行实体分割...")
+        segmented_results = []
+        try:
+            for subject in target_subjects:
+                # 2. 这里用临时变量接收单次结果
+                current_results = sam_service.segment_by_text(
+                    image_path=generated_image_path,
+                    text_prompt=subject,
+                    output_dir=entity_output_dir
+                )
+                
+                # 3. 【关键修复】使用 extend 将单次结果数组合并到总仓库中
+                if current_results:
+                    segmented_results.extend(current_results)
+                
+                # 4. 更新数据库 - 全局实体档案 (Entities 表)
+            for entity in segmented_results:
+                database.add_or_update_entity_appearance(
+                    tree_id=tree_id,
+                    name=entity['label'],
+                    node_id=node_id,
+                    branch_id='branch_1', # 确保前端传了分支名
+                    image_url=entity['path']  # 存入最新的抠图
+                )
+                
+            # 5. 整合进节点的 Assets (Nodes 表)
+            # 把扣出来的图片一并塞进 assets，方便前端直接读取
+            node_assets = {
+                "input": data.get('input_assets', {}),
+                "output": outputs,
+                "segmented": segmented_results # 关键新增：当前节点的抠图快照
+            }
+            
+        except Exception as e:
+            print(f"⚠️ 分割失败: {e}")
+            node_assets = {"input": data.get('input_assets', {}), "output": outputs}
+
+        # 6. 最后调用 database.update_node 保存所有信息
+        database.update_node(
+            node_id=node_id,
+            payload={
                 "title": node_title,
                 "module_id": final_module_id,
-                "assets": assets_with_output,
+                "assets": node_assets, # 存入包含分割图的 assets
                 "parameters": parameters,
-                "status":'completed'
+                "status": 'completed'
             }
-
-    )
+        )
 
 
     # --- 返回更新后的树结构 ---
     updated_tree = database.get_tree_as_json(tree_id)
     return jsonify(updated_tree), 201
 
+# 合并节点路由
+@app.route('/api/nodes/merge', methods=['POST'])
+def merge_nodes():
+    """
+    用户在前端框选了多个节点，点击“合并”
+    """
+    data = request.json
+    node_ids = data.get('node_ids') # ['node_1', 'node_2']
+    group_title = data.get('title', '新合并组')
+    
+    # 在数据库中创建一个特殊的“组节点”或者给这些节点统一打上 parent_group_id
+    success = database.create_group_and_assign_nodes(node_ids, group_title)
+    
+    if success:
+        return jsonify({"message": "合并成功"}), 200
+    return jsonify({"error": "合并失败"}), 500
+
+
+# 手动触发SAM分割
+@app.route('/api/entities/extract', methods=['POST'])
+def extract_entities():
+    data = request.json
+    node_id = data.get('node_id')
+    prompt = data.get('prompt')
+    tree_id = data.get('tree_id')
+
+    # 1. 获取节点原图路径
+    node = database.get_node(node_id)
+    if not node: return jsonify({"error": "Node not found"}), 404
+    
+    # 假设你的视频生成后会存一个封面图在 assets 里
+    image_path = node['assets'].get('poster') or node['assets'].get('output_image')
+    
+    # 2. 调用 SAM Agent 分割
+    output_dir = "static/entities/" # 确保文件夹存在
+    os.makedirs(output_dir, exist_ok=True)
+    
+    try:
+        segments = sam_agent.segment_by_text(image_path, prompt, output_dir)
+        
+        # 3. 更新数据库：存入实体的“档案表”
+        for seg in segments:
+            database.add_or_update_entity_appearance(
+                tree_id=tree_id,
+                name=seg['label'],
+                node_id=node_id,
+                branch_id=node.get('branch_id'),
+                image_url=seg['path']
+            )
+            
+        # 4. 同步更新该节点的 assets
+        database.update_node_assets(node_id, {"segmented_entities": segments})
+        
+        return jsonify({"status": "success", "entities": segments})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ---获取entity图片---
+@app.route('/entities/<path:filename>')
+def serve_entities(filename):
+    # as_attachment=False 确保是在浏览器预览而不是下载
+    return send_from_directory('entities', filename)
 
 # --- 【核心修改】视频拼接 API 接口 (使用 moviepy) ---
 @app.route('/api/stitch', methods=['POST'])

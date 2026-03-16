@@ -5,6 +5,8 @@ import WaveSurfer from 'wavesurfer.js'
 
 import { workflowParameters } from '@/lib/useWorkflowForm.js';
 import { setPrevAgentContext, clearPrevAgentContext } from '@/lib/agentSharedState.js';
+import { updateEntityDisplay } from '@/lib/entityCard.js';
+
 
 // --- link color: light gray for all edges ---
 const defaultLinkColor = '#D1D5DB' // gray-300 #D1D5DB
@@ -2780,7 +2782,29 @@ function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
           .style('color', '#e5e7eb');
       }
     });
+
   }
+
+  // ======================================
+  // 新增：右侧 Output 区域最下方的自定义容器
+  // ======================================
+  const EntityBottomContainer = right.append('xhtml:div')
+    // 基础样式（适配现有布局）
+    .attr('x', 135)          // 对应卡片右半部分的起始 X 坐标
+    .attr('y', 130)          // 放在图片(通常高 80-90)的下方，请根据你实际图片 y 坐标调整
+    .attr('width', 115)      // 右半部分的宽度
+    .attr('height', 45)      // 给足够的高度放缩略图
+    .append('xhtml:div')     // 【关键】必须加 xhtml: 前缀
+    .attr('id', `entities-${d.node_id || d.id}`) // 【关键】确保这里的 ID 生成逻辑与 EntityCard.js 一致
+    .style('display', 'flex')
+    .style('flex-wrap', 'wrap')
+    .style('gap', '4px')
+    .style('padding', '2px')
+    .style('width', '100%')
+    .style('height', '100%')
+    .style('overflow', 'hidden')
+    .style('pointer-events', 'all'); // 确保能触发点击
+
 
 
   /* ==================== 右下角拖拽：只改变节点高度 ==================== */
@@ -3224,4 +3248,13 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
       renderIONode(gEl, d, selectedIds, emit, workflowTypes)
     }
   })
+
+  setTimeout(() => {
+        allNodesData.forEach(node => {
+          console.log(`检查节点 ${node.node_id} 的实体数据:`, node.assets?.segmented);
+            if (node.assets && node.assets.segmented) {
+                updateEntityDisplay(node.id, node.assets.segmented);
+            }
+        });
+    }, 100);
 }

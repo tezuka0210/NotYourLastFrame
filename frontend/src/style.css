@@ -22,14 +22,14 @@ body {
   /* === unified media colors, match NODE_COLORS 旧值 === */
   --media-aux-border: #E5E7EB;  /* auxBorder */
 
-  --media-image: #ffffff;     /* image #5F96DB */
-  --media-video: #ffffff;       /* video #5ABF8E*/
-  --media-audio: #ffffff;       /* audio #E06C6E*/
+  --media-image: #5F96DB;     /* image #5F96DB */
+  --media-video: #5ABF8E;       /* video #5ABF8E*/
+  --media-audio: #E06C6E;       /* audio #E06C6E*/
 
   /* soft tints for header / background */
-  --media-image-soft: #ffffff;  /* #8FB7E8*/
-  --media-video-soft: #ffffff; /* #8FD1B4*/
-  --media-audio-soft: #ffffff; /* #F4A7A8*/
+  --media-image-soft: #8FB7E8;  /* #8FB7E8*/
+  --media-video-soft: #8FD1B4; /* #8FD1B4*/
+  --media-audio-soft: #F4A7A8; /* #F4A7A8*/
 }
 
 /* ===================== workflow 节点卡片 ===================== */
