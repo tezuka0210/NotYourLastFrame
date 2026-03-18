@@ -1,13 +1,10 @@
 <template>
   <div class="app-container">
-    <!-- 顶部细细一条标题栏 -->
+    <!-- 顶部标题栏 -->
     <header class="title-bar">
       <div class="title-main">
         <h1>T2VTree Visual Analytics System</h1>
-        <!-- <p id="status">{{ statusText }}</p> -->
       </div>
-      <!-- 右上角可以预留一些全局状态 / 按钮位 -->
-      <!-- <div class="title-actions">...</div> -->
     </header>
 
     <!-- 三列外壳 -->
@@ -53,7 +50,7 @@
         </div>
       </main>
 
-      <!-- 右列：先占位，将来用。当前宽度设为 0，看不到 -->
+      <!-- 右列：显示绘画面板（核心修改：宽度从 0 改为 360px） -->
       <aside class="col col-right">
         <RightPane />
       </aside>
@@ -75,8 +72,6 @@
       :initial-module-id="initialModuleIdForPopover"
       :initial-workflow-type="initialWorkflowTypeForPopover"
       @close="isGenerationPopoverOpen = false"
-      
-      
     />
   </div>
 </template>
@@ -101,7 +96,6 @@ import GenerationPopover from './components/GenerationPopover.vue'
 
 import LeftPane from './components/LeftPane.vue'
 import RightPane from './components/RightPane.vue'
-import type { S } from 'node_modules/tailwindcss/dist/types-WlZgYgM8.d.mts'
 
 const {
   statusText,
@@ -175,9 +169,7 @@ const createCard = async (parentNode: AppNode, moduleId: string) => {
   console.log(`[App] 收到直接生成请求: Parent=${parentNode.id}, Module=${moduleId}`);
   const newNodeId = crypto.randomUUID();
   selectedParentIds.value = [parentNode.id];
-  const defaultParams = {
-    
-  };
+  const defaultParams = {};
   await handleGenerate(newNodeId,moduleId, defaultParams,moduleId);
   selectedParentIds.value = []; 
 }
@@ -197,7 +189,6 @@ const handleRefreshNode = (nodeId: string, newModuleId: string, updatedParams: R
     return node;
   });
 };
-
 
 const isGenerationPopoverOpen = ref(false)
 const initialModuleIdForPopover = ref<string | null>(null)
@@ -236,7 +227,8 @@ html, body, #app {
 :root {
   --shell-gap: 8px;
   --left-col-w: 320px;
-  --right-col-w: 0px; /* 右侧暂时不用：0px，后面要的话改 320/360 即可 */
+  /* 核心修改：右侧列宽度从 0px 改为 360px（可根据需要调整） */
+  --right-col-w: 360px; 
 }
 
 .app-container {
@@ -275,21 +267,8 @@ html, body, #app {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-
-  /* 轻微发光，让颜色更立体 */
   text-shadow: 0 0 1px rgba(0,0,0,0.15);
 }
-
-/* 渐变缓慢流动 */
-@keyframes titleGradientShift {
-  0% {
-    background-position: 0% 50%;
-  }
-  100% {
-    background-position: 100% 50%;
-  }
-}
-
 
 .title-main p {
   margin: 0;
@@ -352,14 +331,15 @@ html, body, #app {
 .center-bottom {
   padding: 4px 8px;
   box-sizing: border-box;
-  /* flex: 0 0 32%; */
-  min-height: 0;   /* 关键：允许内部子组件用 h-full 撑满 */
-  display: flex;   /* 关键：把 StitchingPanel 作为可拉伸子项 */
+  min-height: 0;
+  display: flex;
   flex-direction: column;
 }
 
+/* 补充：右侧列样式，确保内部内容能滚动 */
 .col-right {
   box-sizing: border-box;
+  padding: 0; /* 让 RightPane 自己控制内边距 */
+  overflow-y: auto; /* 内容超出时滚动 */
 }
 </style>
-

@@ -2941,8 +2941,8 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     d.parameters?.positive_prompt ||
     d.parameters?.global_context ||
     ''
-  const hasMedia = !!(d.assets && d.assets.input && d.assets.input.images && d.assets.input.images.length > 0)
-  const mediaUrl = hasMedia ? d.assets.input.images : ''
+  // const hasMedia = !!(d.assets && d.assets.input && d.assets.input.images && d.assets.input.images.length > 0)
+  // const mediaUrl = hasMedia ? d.assets.input.images : ''
   const opTextArea = opSection.append('xhtml:textarea')
     .attr('class', 'thin-scroll')
     .style('flex', '1 1 auto')
@@ -2973,6 +2973,16 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
   opAgentBtn.on('click', ev => {
     ev.stopPropagation()
     clearPrevAgentContext();
+    // ========== 修改2：点击Agent时动态获取最新的图片URL ==========
+    // 优先取previewImages（拖拽/上传的最新图片），其次取d.assets
+    const currentImages = previewImages.length > 0 
+      ? previewImages 
+      : (d.assets?.input?.images || []);
+    // 取第一张图片URL（Agent接口通常只传单张），如果是数组转字符串
+    const mediaUrl = currentImages.length > 0 
+      ? (typeof currentImages[0] === 'string' ? currentImages[0] : '') 
+      : '';
+      
     const payload = {
       user_input: opTextArea.property('value') || '',
       node_id: d.id,
@@ -3068,6 +3078,81 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     .style('gap', '4px')
     .style('overflow-x', 'auto')
 
+  // ========== 新增：预览区域拖拽监听 ==========
+  // 1. 允许拖拽进入
+  previewRow.on('dragover', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    previewRow.style.border = '1px solid #3B82F6';
+    previewRow.style.background = '#f0f9ff';
+  });
+
+  // 2. 拖拽离开：恢复样式
+  previewRow.on('dragleave', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (!previewRow.node().contains(ev.relatedTarget)) {
+      previewRow.style.border = '1px dashed #e5e7eb';
+      previewRow.style.background = '#f9fafb';
+    }
+  });
+
+  // 3. 拖拽放下：接收Canvas图片并添加到输入列表
+  previewRow.on('drop', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    
+    // 恢复样式
+    previewRow.style.border = '1px dashed #e5e7eb';
+    previewRow.style.background = '#f9fafb';
+
+    // 解析拖拽数据
+    const data = ev.dataTransfer.getData('text/plain');
+    let dragData = null;
+    try {
+      dragData = JSON.parse(data);
+    } catch (err) {
+      dragData = { url: data };
+    }
+
+    // 校验是否是Canvas导出的图片
+    if (!dragData.url || !dragData.url.startsWith('data:image/')) return;
+
+    // ========== 修改3：拖拽添加后同步更新d.assets（关键） ==========
+    // 避免重复添加
+    if (!previewImages.includes(dragData.url)) {
+      previewImages.push(dragData.url);
+      
+      // 同步更新节点的assets数据（核心！）
+      if (!d.assets) d.assets = {};
+      if (!d.assets.input) d.assets.input = {};
+      d.assets.input.images = previewImages; // 把拖拽的图片同步到d.assets
+      
+      // 触发上传事件（和点击+号上传逻辑一致）
+      const blob = dataURLToBlob(dragData.url);
+      const file = new File([blob], 'canvas-export.png', { type: 'image/png' });
+      emit('upload-media', d.id, [file]);
+      
+      // 重新渲染预览区域
+      renderPreview();
+    }
+  });
+
+  // ========== 辅助函数：DataURL转Blob ==========
+  function dataURLToBlob(dataURL) {
+    const arr = dataURL.split(',');
+    const mime = arr[0].match(/:(.*?);/)[1];
+    const bstr = atob(arr[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+  }
+
+  // ========== 修改4：调整previewImages初始化顺序（移到拖拽逻辑前） ==========
+  // 原有预览图片逻辑（调整位置到拖拽监听后、renderPreview前）
   let previewImages = (d.assets && d.assets.input && d.assets.input.images)
     ? [...d.assets.input.images]
     : []
@@ -3107,7 +3192,7 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
 
   renderPreview()
 
-  // 隐藏的 file input
+  // 原有文件上传逻辑（不变）
   const hiddenInput = imgSection.append('xhtml:input')
     .attr('type', 'file')
     .attr('accept', 'image/*, video/*')

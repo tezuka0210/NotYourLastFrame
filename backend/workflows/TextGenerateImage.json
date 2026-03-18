@@ -1,25 +1,9 @@
 {
-  "8": {
-    "inputs": {
-      "samples": [
-        "31",
-        0
-      ],
-      "vae": [
-        "39",
-        0
-      ]
-    },
-    "class_type": "VAEDecode",
-    "_meta": {
-      "title": "VAE解码"
-    }
-  },
   "9": {
     "inputs": {
-      "filename_prefix": "flux_krea",
+      "filename_prefix": "z-image",
       "images": [
-        "8",
+        "57:8",
         0
       ]
     },
@@ -28,58 +12,41 @@
       "title": "保存图像"
     }
   },
-  "27": {
+  "58": {
     "inputs": {
-      "width": 1024,
-      "height": 512,
-      "batch_size": 1
+      "value": "A woman in her 30s with shoulder-length dark hair, wearing casual autumn coat and jeans, walking a medium-sized golden retriever on a leather leash, relaxed companionable posture, late afternoon golden hour lighting, tree-lined suburban sidewalk with fallen leaves, soft shadows, warm color tones, photorealistic, 4K detailed"
     },
-    "class_type": "EmptySD3LatentImage",
+    "class_type": "PrimitiveStringMultiline",
     "_meta": {
-      "title": "Size_Setting"
+      "title": "CLIP Text Encode (Positive Prompt)"
     }
   },
-  "31": {
+  "61": {
     "inputs": {
-      "seed": 710548393345187,
-      "steps": 20,
-      "cfg": 1,
-      "sampler_name": "euler",
-      "scheduler": "simple",
-      "denoise": 1,
-      "model": [
-        "38",
+      "string_a": "Pixel art style,",
+      "string_b": [
+        "58",
         0
       ],
-      "positive": [
-        "45",
-        0
-      ],
-      "negative": [
-        "42",
-        0
-      ],
-      "latent_image": [
-        "27",
-        0
-      ]
+      "delimiter": ""
     },
-    "class_type": "KSampler",
+    "class_type": "StringConcatenate",
     "_meta": {
-      "title": "KSampler"
+      "title": "连接"
     }
   },
-  "38": {
+  "57:30": {
     "inputs": {
-      "unet_name": "flux1-krea-dev_fp8_scaled.safetensors",
-      "weight_dtype": "default"
+      "clip_name": "qwen_3_4b.safetensors",
+      "type": "lumina2",
+      "device": "default"
     },
-    "class_type": "UNETLoader",
+    "class_type": "CLIPLoader",
     "_meta": {
-      "title": "UNet加载器"
+      "title": "加载CLIP"
     }
   },
-  "39": {
+  "57:29": {
     "inputs": {
       "vae_name": "ae.safetensors"
     },
@@ -88,22 +55,10 @@
       "title": "加载VAE"
     }
   },
-  "40": {
-    "inputs": {
-      "clip_name1": "clip_l.safetensors",
-      "clip_name2": "t5xxl_fp8_e4m3fn_scaled.safetensors",
-      "type": "flux",
-      "device": "default"
-    },
-    "class_type": "DualCLIPLoader",
-    "_meta": {
-      "title": "双CLIP加载器"
-    }
-  },
-  "42": {
+  "57:33": {
     "inputs": {
       "conditioning": [
-        "45",
+        "57:27",
         0
       ]
     },
@@ -112,17 +67,100 @@
       "title": "条件零化"
     }
   },
-  "45": {
+  "57:8": {
     "inputs": {
-      "text": "Inside a quiet Ming palace hall, soft lattice-window light falls on polished stone; a man sits centered, facing the camera, upper body visible above a wide redwood scholar’s 案台 (120 cm × 60 cm) whose front panel completely obscures his lower body; he wears a deep-black silk python robe with expansive sleeves spreading over the tabletop, white-jade belt snug at his waist, while the standard Ming dynasty 乌纱帽 (imperial court cap) rests on his head—its black fine-mesh gauze shaped front-low and back-high, forming a clean, slanted silhouette; at the rear crown, two long oval wing-like boards (帽翅) of the same dark gauze stretch left and right, each about 12 cm long, edges stitched with barely visible dark-gray thread; beneath the cap, a white silk net-band (网巾) wraps his gathered hair, knotting at the nape, every loop and knot catching soft side-light; the gauze’s minute hexagonal weave is crisply resolved, revealing faint intersections back-lit by natural window rays; on the table directly before him rests the existing blue-and-white porcelain vase—absolutely unchanged in pattern, color, or 20 cm diameter; his expression is mild and scholarly, hands relaxed at the table edge; palette of obsidian silk, antique gold trim, cool jade belt, sheer black gauze and crisp ceramic white, 50 mm lens, f/2.8, 8 K clarity, shallow depth, serene court ambiance.",
+      "samples": [
+        "57:3",
+        0
+      ],
+      "vae": [
+        "57:29",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "57:28": {
+    "inputs": {
+      "unet_name": "z_image_turbo_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "57:27": {
+    "inputs": {
+      "text": [
+        "58",
+        0
+      ],
       "clip": [
-        "40",
+        "57:30",
         0
       ]
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP Text Encode (Positive Prompt)"
+      "title": "CLIPTextEncode"
+    }
+  },
+  "57:13": {
+    "inputs": {
+      "width": 1024,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptySD3LatentImage",
+    "_meta": {
+      "title": "Size_Setting"
+    }
+  },
+  "57:3": {
+    "inputs": {
+      "seed": 759785583432956,
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "res_multistep",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "57:11",
+        0
+      ],
+      "positive": [
+        "57:27",
+        0
+      ],
+      "negative": [
+        "57:33",
+        0
+      ],
+      "latent_image": [
+        "57:13",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "57:11": {
+    "inputs": {
+      "shift": 3,
+      "model": [
+        "57:28",
+        0
+      ]
+    },
+    "class_type": "ModelSamplingAuraFlow",
+    "_meta": {
+      "title": "采样算法（AuraFlow）"
     }
   }
 }

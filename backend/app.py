@@ -59,7 +59,7 @@ if APP_MODE == 'local':
     COMFYUI_OUTPUT_PATH = os.path.join(LOCAL_ASSETS_PATH, 'output')
     print(f"本地模式：使用 '{LOCAL_ASSETS_PATH}' 作为资源根目录")
 else:
-    BASE_COMFYUI_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'comfyui', 'comfyui'))
+    BASE_COMFYUI_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'comfyui', 'ComfyUI'))
     COMFYUI_INPUT_PATH = os.path.join(BASE_COMFYUI_PATH, 'input')
     COMFYUI_OUTPUT_PATH = os.path.join(BASE_COMFYUI_PATH, 'output')
     print(f"服务器模式：使用 '{BASE_COMFYUI_PATH}' 作为 ComfyUI 根目录")
@@ -1170,6 +1170,11 @@ def create_node():
             if 'seed' in parameters:
                 workflow[sampleradv_node_id]["inputs"]["noise_seed"] = parameters['seed']
         
+        randomseed_node_id = find_node_id_by_title(workflow, "RandomSeed")
+        if randomseed_node_id:
+            if 'seed' in parameters:
+                workflow[randomseed_node_id]["inputs"]["noise_seed"] = parameters['seed']
+
         # STITICH
         stitch_node_id = find_node_id_by_title(workflow,"Image Stitch")
         if stitch_node_id:
@@ -1317,36 +1322,40 @@ def create_node():
         )
         
 
-        # 3. 执行 SAM 3 分割
         print(f"🎨 正在对节点 {node_id} 进行实体分割...")
         segmented_results = []
         try:
             for subject in target_subjects:
-                # 2. 这里用临时变量接收单次结果
                 current_results = sam_service.segment_by_text(
                     image_path=generated_image_path,
                     text_prompt=subject,
                     output_dir=entity_output_dir
                 )
-                
-                # 3. 【关键修复】使用 extend 将单次结果数组合并到总仓库中
                 if current_results:
                     segmented_results.extend(current_results)
-                
-                # 4. 更新数据库 - 全局实体档案 (Entities 表)
+            
+            # ========== 核心优化：批量删除当前节点下的所有实体记录（前置执行） ==========
+            print(f"🗑️  清理节点 {node_id} 下的旧实体记录...")
+            database.delete_all_entity_appearance_by_node(tree_id=tree_id, node_id=node_id)
+            
+            # ========== 纯插入逻辑（无需再判断更新） ==========
+            print(f"📥 批量插入节点 {node_id} 的新实体记录...")
             for entity in segmented_results:
-                database.add_or_update_entity_appearance(
+                database.add_entity_appearance(  # 函数名改为更贴合的「纯插入」
                     tree_id=tree_id,
                     name=entity['label'],
                     node_id=node_id,
-                    branch_id='branch_1', # 确保前端传了分支名
-                    image_url=entity['path']  # 存入最新的抠图
+                    branch_id='branch_1',
+                    image_url=entity['path']
                 )
+
                 
             # 5. 整合进节点的 Assets (Nodes 表)
             # 把扣出来的图片一并塞进 assets，方便前端直接读取
+            node_data = database.get_node(node_id)
+            existing_assets = node_data.get('assets', {})
             node_assets = {
-                "input": data.get('input_assets', {}),
+                **existing_assets,
                 "output": outputs,
                 "segmented": segmented_results # 关键新增：当前节点的抠图快照
             }

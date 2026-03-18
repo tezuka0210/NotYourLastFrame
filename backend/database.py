@@ -258,7 +258,7 @@ def get_node(node_id: str) -> dict | None:
 
             # 5. 【新需求】查询该节点下属的所有实体 (分割出的主体)
             cursor.execute("""
-                SELECT entity_id, name, description, representive_thumb, appearance_nodes 
+                SELECT entity_id, name, description, representative_thumb, appearance_nodes 
                 FROM Entities 
                 WHERE appearance_nodes LIKE ?
             """, (f'%"node_id"%',))
@@ -592,61 +592,85 @@ def update_entity_info(entity_id: str, new_name: str, new_desc: str):
     conn.close()
 
 
-def add_or_update_entity_appearance(tree_id, name, node_id, branch_id, image_url):
+# ------------------------------ 新增批量删除函数 ------------------------------
+def delete_all_entity_appearance_by_node(tree_id, node_id):
+    """
+    【正确逻辑】针对 Entities 表：
+    保留整行数据，仅删除 appearance_nodes 数组中，指定 node_id 的条目
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.row_factory = lambda cursor, row: {col[0]: row[i] for i, col in enumerate(cursor.description)}
     
     try:
-        # 1. 查询同一 tree 下的同名实体
-        cursor.execute(
-            "SELECT entity_id, appearance_nodes FROM Entities WHERE name = ? AND tree_id = ?",
-            (name, tree_id)
-        )
-        result = cursor.fetchone()
+        # 1. 查询该树下的所有实体
+        cursor.execute("SELECT entity_id, appearance_nodes FROM Entities WHERE tree_id = ?", (tree_id,))
+        entities = cursor.fetchall()
         
-        if result:
-            # 2. 实体存在 → 仅更新当前 node 的数据（不碰其他 node）
-            entity_id = result['entity_id']
-            appearance_nodes = json.loads(result['appearance_nodes'])
-            # 标记是否更新了现有 node
-            updated = False
+        updated_count = 0
+        
+        for entity in entities:
+            entity_id = entity['entity_id']
+            # 解析 JSON 数组
+            appearance_nodes = json.loads(entity['appearance_nodes'])
             
-            for idx, app in enumerate(appearance_nodes):
-                if app['node_id'] == node_id:
-                    # 仅更新当前 node 的 thumb 和 branch_id
-                    appearance_nodes[idx]['thumb'] = image_url
-                    appearance_nodes[idx]['branch_id'] = branch_id
-                    updated = True
-                    break
+            # 核心逻辑：过滤掉要删除的 node_id，只保留其他节点
+            # 这一行对应你的需求：删除该节点下的所有实体记录
+            new_nodes = [app for app in appearance_nodes if app['node_id'] != node_id]
             
-            # 未找到当前 node → 新增（不影响旧 node）
-            if not updated:
-                appearance_nodes.append({
-                    "node_id": node_id,
-                    "branch_id": branch_id,
-                    "thumb": image_url
-                })
-            
-            # 执行更新（仅替换 appearance_nodes，保留其他字段）
-            cursor.execute(
-                "UPDATE Entities SET appearance_nodes = ?, representative_thumb = ? WHERE entity_id = ?",
-                (json.dumps(appearance_nodes), image_url, entity_id)
-            )
-        else:
-            # 3. 实体不存在 → 新建（原有逻辑）
-            new_id = str(uuid.uuid4())
-            appearance_nodes = [{
-                "node_id": node_id,
-                "branch_id": branch_id,
-                "thumb": image_url
-            }]
-            cursor.execute(
-                "INSERT INTO Entities (entity_id, tree_id, name, representative_thumb, appearance_nodes) VALUES (?, ?, ?, ?, ?)",
-                (new_id, tree_id, name, image_url, json.dumps(appearance_nodes))
-            )
+            # 判断是否真的删除了东西（如果长度变了，说明更新了）
+            if len(new_nodes) != len(appearance_nodes):
+                # 2. 更新数据库，把新数组写回去
+                cursor.execute(
+                    "UPDATE Entities SET appearance_nodes = ? WHERE entity_id = ?",
+                    (json.dumps(new_nodes), entity_id)
+                )
+                updated_count += 1
         
         conn.commit()
+        print(f"✅ 操作成功：清理了 {updated_count} 个实体的 JSON 数据，移除了节点 {node_id} 的引用")
+        
+    except Exception as e:
+        print(f"❌ 清理失败: {e}")
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+def add_entity_appearance(tree_id, name, node_id, branch_id, image_url):
+    """
+    纯插入逻辑：无论同名实体是否存在，都创建全新的实体记录（不更新任何已有数据）
+    - 不查询、不更新已有实体
+    - 每次调用都生成新的 entity_id
+    - 仅执行 INSERT 操作
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # 1. 生成全新的实体ID（每次插入都是新的）
+        new_entity_id = str(uuid.uuid4())
+        
+        # 2. 构造 appearance_nodes 数组（仅包含当前节点）
+        appearance_nodes = [{
+            "node_id": node_id,
+            "branch_id": branch_id,
+            "thumb": image_url
+        }]
+        
+        # 3. 执行纯插入操作（完全不涉及 UPDATE）
+        cursor.execute(
+            "INSERT INTO Entities (entity_id, tree_id, name, representative_thumb, appearance_nodes) VALUES (?, ?, ?, ?, ?)",
+            (new_entity_id, tree_id, name, image_url, json.dumps(appearance_nodes))
+        )
+        
+        conn.commit()
+        print(f"✅ 成功插入新实体记录：entity_id={new_entity_id}, name={name}, node_id={node_id}")
+        
+    except Exception as e:
+        print(f"❌ 插入实体记录失败: {e}")
+        conn.rollback()  # 出错回滚
+        raise
     finally:
         conn.close()
 

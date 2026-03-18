@@ -158,12 +158,76 @@ export function updateEntityDisplay(nodeId, segmentedAssets) {
         }
 
         img.src = fullPath;
+        img.style.pointerEvents = 'none';
         img.title = `${asset.label || `entity-${index}`} (双击放大)`;
         img.style.cssText = `
             width: 100%;
             height: 100%;
             object-fit: contain;
         `;
+
+        // ========== 新增：删除按钮 ==========
+        const deleteBtn = document.createElement('div');
+        deleteBtn.style.cssText = `
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 16px;
+            height: 16px;
+            background-color: #EF4444;
+            color: white;
+            border-radius: 50%;
+            display: none; /* 默认隐藏 */
+            justify-content: center;
+            align-items: center;
+            font-size: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 10;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        `;
+        deleteBtn.innerText = '×';
+        deleteBtn.title = '删除该实体';
+
+        // 鼠标悬停时显示删除按钮
+        imgWrapper.onmouseenter = () => {
+            imgWrapper.style.borderColor = '#3B82F6';
+            imgWrapper.style.transform = 'scale(1.05)';
+            deleteBtn.style.display = 'flex'; // 显示删除按钮
+        };
+
+        // 鼠标离开时隐藏删除按钮
+        imgWrapper.onmouseleave = () => {
+            imgWrapper.style.borderColor = '#E5E7EB';
+            imgWrapper.style.transform = 'scale(1)';
+            deleteBtn.style.display = 'none'; // 隐藏删除按钮
+        };
+
+        // 删除按钮点击事件
+        deleteBtn.onclick = (e) => {
+            e.stopPropagation(); // 阻止事件冒泡到父元素
+            // 1. 确认删除（可选：增加确认提示）
+            const confirmDelete = window.confirm(`确定要删除实体 "${asset.label || `entity-${index}`}" 吗？`);
+            if (!confirmDelete) return;
+
+            // 2. 删除数组中的对应实体
+            segmentedAssets.splice(index, 1);
+            
+            // 3. 派发删除事件（供外部监听处理）
+            window.dispatchEvent(new CustomEvent('delete-entity-asset', {
+                detail: { 
+                    nodeId: nodeId, 
+                    asset: asset,
+                    remainingAssets: [...segmentedAssets] // 传递剩余实体
+                }
+            }));
+
+            // 4. 更新显示
+            updateEntityDisplay(nodeId, segmentedAssets);
+            
+            console.log(`[EntityCard] 实体已删除：${asset.label || `entity-${index}`} in node ${nodeId}`);
+        };
+
 
         // 5. 单击事件（保留原有逻辑）
         imgWrapper.onclick = (e) => {
@@ -246,5 +310,80 @@ export function updateEntityDisplay(nodeId, segmentedAssets) {
 
         imgWrapper.appendChild(img);
         container.appendChild(imgWrapper);
+        
     });
+    // ========== 3. 绘画面板拖拽接收逻辑（全局注册，只需执行一次） ==========
+    const initCanvasDrop = () => {
+        // 替换为你的绘画面板ID（比如 <div id="drawing-board"></div>）
+        const drawingBoard = document.getElementById('drawing-board');
+        if (!drawingBoard || drawingBoard.dataset.dropInited) return;
+
+        // 标记已初始化，避免重复绑定
+        drawingBoard.dataset.dropInited = 'true';
+
+        // 样式：拖拽进入时高亮
+        drawingBoard.style.cssText += `
+            min-height: 400px;
+            border: 2px dashed #ccc;
+            transition: border-color 0.2s, background 0.2s;
+            position: relative;
+            overflow: hidden;
+        `;
+
+        // 1. 阻止默认行为（否则浏览器会打开图片URL）
+        drawingBoard.ondragover = (e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy'; // 提示“复制”类型的拖拽
+            // 拖拽进入时高亮画板
+            drawingBoard.style.borderColor = '#3B82F6';
+            drawingBoard.style.background = 'rgba(59, 130, 246, 0.05)';
+        };
+
+        // 2. 拖拽离开时恢复样式
+        drawingBoard.ondragleave = () => {
+            drawingBoard.style.borderColor = '#ccc';
+            drawingBoard.style.background = 'transparent';
+        };
+
+    };
+
+    // 初始化画板拖拽逻辑
+    initCanvasDrop();
+}
+
+// ========== 辅助函数：让画板内的图片可拖拽调整位置 ==========
+function makeDraggable(element) {
+    let isDragging = false;
+    let offsetX, offsetY;
+
+    element.onmousedown = (e) => {
+        isDragging = true;
+        // 计算鼠标相对于元素的偏移
+        offsetX = e.clientX - element.getBoundingClientRect().left;
+        offsetY = e.clientY - element.getBoundingClientRect().top;
+        // 提升层级，避免被遮挡
+        element.style.zIndex = 20;
+        element.style.cursor = 'grabbing';
+    };
+
+    document.onmousemove = (e) => {
+        if (!isDragging) return;
+        // 获取画板容器
+        const board = document.getElementById('drawing-board');
+        const boardRect = board.getBoundingClientRect();
+        // 计算元素在画板内的位置
+        const x = e.clientX - boardRect.left - offsetX;
+        const y = e.clientY - boardRect.top - offsetY;
+        // 更新位置
+        element.style.left = `${x}px`;
+        element.style.top = `${y}px`;
+    };
+
+    document.onmouseup = () => {
+        if (isDragging) {
+            isDragging = false;
+            element.style.cursor = 'move';
+            element.style.zIndex = 10;
+        }
+    };
 }
