@@ -3576,7 +3576,7 @@ function renderMediaContent(container, data) {
         allNodesData.forEach(node => {
           console.log(`检查节点 ${node.node_id} 的实体数据:`, node.assets?.segmented);
             if (node.assets && node.assets.segmented) {
-                updateEntityDisplay(node.id, node.assets.segmented);
+                updateEntityDisplay(node.id, node.assets.segmented,node);
             }
         });
     }, 100);

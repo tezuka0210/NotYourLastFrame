@@ -13,7 +13,8 @@ WORKFLOW_METADATA = {
     "TextGenerateVideo.json": "Generates VIDEO/ANIMATION from text.",
     "ImageGenerateVideo.json":"Generates VIDEO/ANIMATION from image.",
     "FLFrameToVideo.json":"Determine the beginning and end frames of the video and generate the video",
-    "CameraControl.json": "Control the direction of camera movement"
+    "CameraControl.json": "Control the direction of camera movement",
+    "ImageInpainting.json": "Partially redraw the mask area of the image"
 }
 
 def format_workflow_list(file_list):

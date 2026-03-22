@@ -985,6 +985,14 @@ def create_node():
                 image2_filename = get_input_image_filenames_from_db(node_id)[1]
                 image_filenames["LoadBackgroundImage"] = image1_filename
                 image_filenames["LoadMoveImage"] = image2_filename 
+            elif(module_id_from_frontend=='ImageInpainting'):
+                final_module_id = module_id_from_frontend 
+                workflow = load_workflow(final_module_id)
+                if workflow is None: raise ValueError(f"未找到 ImageInpainting 工作流 '{final_module_id}.json'")
+                image1_filename = get_input_image_filenames_from_db(node_id)[0]
+                image2_filename = get_input_image_filenames_from_db(node_id)[1]
+                image_filenames["LoadImage"] = image1_filename
+                image_filenames["LoadMask"] = image2_filename 
             else:
                 print(">>> 检测到两个输入,执行ImageMerging工作流...")
                 image1_filename = get_input_image_filenames_from_db(node_id)[0]

@@ -1,15 +1,12 @@
 /**
  * EntityCard.js
  * 专门负责在 D3 渲染出的节点卡片中填充实体（Entity）缩略图
- */
-
-/**
- * EntityCard.js
- * 专门负责在 D3 渲染出的节点卡片中填充实体（Entity）缩略图
  * 修复：保存图片功能（兼容跨域图片下载）
+ * 新增：支持显示 node.assets.output.images 中的图片
+ * 还原：完全保留原有样式（一排3个、统一边框颜色）
  */
 
-export function updateEntityDisplay(nodeId, segmentedAssets) {
+export function updateEntityDisplay(nodeId, segmentedAssets, node) {
     // 1. 定位 D3 在 workflowGraph.js 中创建的 foreignObject 内部容器
     const container = document.getElementById(`entities-${nodeId}`);
     
@@ -18,15 +15,35 @@ export function updateEntityDisplay(nodeId, segmentedAssets) {
     // 2. 清空现有内容
     container.innerHTML = '';
 
-    // 3. 数据校验
-    if (!segmentedAssets || !Array.isArray(segmentedAssets) || segmentedAssets.length === 0) {
+    // 3. 整合数据：合并 segmentedAssets 和 node.assets.output.images
+    let allAssets = [];
+    
+    // 处理原有实体图片
+    if (segmentedAssets && Array.isArray(segmentedAssets) && segmentedAssets.length > 0) {
+        allAssets = [...allAssets, ...segmentedAssets.map(asset => ({
+            ...asset,
+            type: 'entity' // 仅用于逻辑区分，不影响样式
+        }))];
+    }
+
+    // 处理 node.assets.output.images 图片（核心新增逻辑，样式和实体图片完全一致）
+    if (node && node.assets && node.assets.output && node.assets.output.images && Array.isArray(node.assets.output.images)) {
+        allAssets = [...allAssets, ...node.assets.output.images.map((image, idx) => ({
+            path: image.path || image, // 兼容路径字符串或对象格式
+            label: image.label || `output-image-${idx}`,
+            type: 'output' // 仅用于逻辑区分，不影响样式
+        }))];
+    }
+
+    // 数据校验：无图片则返回
+    if (allAssets.length === 0) {
         return;
     }
 
     // 定义后端基础地址
     const BACKEND_URL = 'http://localhost:5005';
 
-    // ========== 新增：创建放大预览弹窗（全局唯一） ==========
+    // ========== 保留原有：创建放大预览弹窗（全局唯一） ==========
     let previewModal = document.getElementById('entity-preview-modal');
     if (!previewModal) {
         previewModal = document.createElement('div');
@@ -129,16 +146,16 @@ export function updateEntityDisplay(nodeId, segmentedAssets) {
         });
     }
 
-    // 4. 遍历并创建缩略图
-    segmentedAssets.forEach((asset, index) => {
-        // 创建包裹容器
+    // 4. 遍历并创建缩略图（完全保留你原有的样式）
+    allAssets.forEach((asset, index) => {
+        // 创建包裹容器（完全保留你原来的样式，移除所有自定义颜色）
         const imgWrapper = document.createElement('div');
         imgWrapper.className = 'entity-item-mini';
         imgWrapper.style.cssText = `
             width: 32px;
             height: 32px;
             border-radius: 4px;
-            border: 1px solid #E5E7EB;
+            border: 1px solid #E5E7EB; /* 还原你原本的灰色边框 */
             background-color: #F9FAFB;
             overflow: hidden;
             cursor: pointer;
@@ -147,10 +164,12 @@ export function updateEntityDisplay(nodeId, segmentedAssets) {
             align-items: center;
             justify-content: center;
             transition: all 0.2s ease;
+            position: relative; /* 仅保留删除按钮定位所需 */
+            /* 移除margin，恢复你原本一排3个的布局 */
         `;
 
         const img = document.createElement('img');
-        // 路径拼接
+        // 路径拼接（保留原有逻辑）
         let fullPath = asset.path;
         if (!fullPath.startsWith('http')) {
             const cleanPath = fullPath.startsWith('/') ? fullPath.substring(1) : fullPath;
@@ -159,14 +178,15 @@ export function updateEntityDisplay(nodeId, segmentedAssets) {
 
         img.src = fullPath;
         img.style.pointerEvents = 'none';
-        img.title = `${asset.label || `entity-${index}`} (双击放大)`;
+        // 标题保留原有格式，仅补充output标识（不影响视觉）
+        img.title = `${asset.label || `${asset.type === 'entity' ? 'entity' : 'output-image'}-${index}`} (双击放大)`;
         img.style.cssText = `
             width: 100%;
             height: 100%;
             object-fit: contain;
         `;
 
-        // ========== 新增：删除按钮 ==========
+        // ========== 保留原有：删除按钮（样式完全不变） ==========
         const deleteBtn = document.createElement('div');
         deleteBtn.style.cssText = `
             position: absolute;
@@ -187,141 +207,126 @@ export function updateEntityDisplay(nodeId, segmentedAssets) {
             box-shadow: 0 1px 2px rgba(0,0,0,0.2);
         `;
         deleteBtn.innerText = '×';
-        deleteBtn.title = '删除该实体';
+        deleteBtn.title = `删除${asset.type === 'output' ? '输出' : '实体'}图片`;
 
-        // 鼠标悬停时显示删除按钮
+        // 鼠标悬停效果（完全保留你原有逻辑）
         imgWrapper.onmouseenter = () => {
             imgWrapper.style.borderColor = '#3B82F6';
             imgWrapper.style.transform = 'scale(1.05)';
-            deleteBtn.style.display = 'flex'; // 显示删除按钮
+            deleteBtn.style.display = 'flex';
         };
 
-        // 鼠标离开时隐藏删除按钮
         imgWrapper.onmouseleave = () => {
-            imgWrapper.style.borderColor = '#E5E7EB';
+            imgWrapper.style.borderColor = '#E5E7EB'; // 还原原有边框色
             imgWrapper.style.transform = 'scale(1)';
-            deleteBtn.style.display = 'none'; // 隐藏删除按钮
+            deleteBtn.style.display = 'none';
         };
 
-        // 删除按钮点击事件
+        // 删除按钮点击事件（兼容output图片，逻辑不变）
         deleteBtn.onclick = (e) => {
-            e.stopPropagation(); // 阻止事件冒泡到父元素
-            // 1. 确认删除（可选：增加确认提示）
-            const confirmDelete = window.confirm(`确定要删除实体 "${asset.label || `entity-${index}`}" 吗？`);
+            e.stopPropagation();
+            const confirmDelete = window.confirm(`确定要删除${asset.type === 'output' ? '输出' : '实体'}图片 "${asset.label || `${asset.type === 'entity' ? 'entity' : 'output-image'}-${index}`}" 吗？`);
             if (!confirmDelete) return;
 
-            // 2. 删除数组中的对应实体
-            segmentedAssets.splice(index, 1);
-            
-            // 3. 派发删除事件（供外部监听处理）
+            // 根据类型删除对应数组中的元素
+            if (asset.type === 'entity' && segmentedAssets) {
+                const entityIndex = segmentedAssets.findIndex(item => item.path === asset.path && item.label === asset.label);
+                if (entityIndex !== -1) {
+                    segmentedAssets.splice(entityIndex, 1);
+                }
+            } else if (asset.type === 'output' && node && node.assets?.output?.images) {
+                const outputIndex = node.assets.output.images.findIndex(item => (item.path || item) === asset.path);
+                if (outputIndex !== -1) {
+                    node.assets.output.images.splice(outputIndex, 1);
+                }
+            }
+
+            // 派发删除事件
             window.dispatchEvent(new CustomEvent('delete-entity-asset', {
                 detail: { 
                     nodeId: nodeId, 
                     asset: asset,
-                    remainingAssets: [...segmentedAssets] // 传递剩余实体
+                    assetType: asset.type,
+                    remainingAssets: [...allAssets.filter((_, idx) => idx !== index)]
                 }
             }));
 
-            // 4. 更新显示
-            updateEntityDisplay(nodeId, segmentedAssets);
+            // 更新显示
+            updateEntityDisplay(nodeId, segmentedAssets, node);
             
-            console.log(`[EntityCard] 实体已删除：${asset.label || `entity-${index}`} in node ${nodeId}`);
+            console.log(`[EntityCard] ${asset.type}图片已删除：${asset.label || `${asset.type === 'entity' ? 'entity' : 'output-image'}-${index}`} in node ${nodeId}`);
         };
-
 
         // 5. 单击事件（保留原有逻辑）
         imgWrapper.onclick = (e) => {
             e.stopPropagation();
             window.dispatchEvent(new CustomEvent('select-entity-asset', {
-                detail: { nodeId: nodeId, asset: asset }
+                detail: { nodeId: nodeId, asset: asset, assetType: asset.type }
             }));
-            console.log(`[EntityCard] Entity clicked: ${asset.label} in node ${nodeId}`);
+            console.log(`[EntityCard] ${asset.type} image clicked: ${asset.label} in node ${nodeId}`);
         };
 
-        // ========== 修复核心：双击事件（兼容跨域保存） ==========
+        // ========== 保留原有：双击事件（兼容跨域保存） ==========
         imgWrapper.ondblclick = (e) => {
             e.stopPropagation();
             const modal = document.getElementById('entity-preview-modal');
             const previewImg = modal.querySelector('img');
             const saveBtn = modal.querySelector('button:last-child');
 
-            // 设置高清图片地址
             previewImg.src = fullPath;
-            previewImg.alt = asset.label || `entity-${index}`;
+            previewImg.alt = asset.label || `${asset.type === 'entity' ? 'entity' : 'output-image'}-${index}`;
 
-            // ========== 修复保存逻辑：通过Canvas转换Base64实现下载 ==========
             saveBtn.onclick = async () => {
                 try {
-                    // 1. 加载图片（解决跨域问题）
                     const image = new Image();
-                    // 关键：允许跨域（需后端配合设置CORS头 Access-Control-Allow-Origin: *）
                     image.crossOrigin = 'anonymous';
                     image.src = fullPath;
 
-                    // 等待图片加载完成
                     await new Promise((resolve, reject) => {
                         image.onload = resolve;
                         image.onerror = () => reject(new Error('图片加载失败'));
                     });
 
-                    // 2. 创建Canvas并绘制图片
                     const canvas = document.createElement('canvas');
                     canvas.width = image.width;
                     canvas.height = image.height;
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(image, 0, 0);
 
-                    // 3. 转换为Base64（PNG格式）
                     const base64Url = canvas.toDataURL('image/png');
 
-                    // 4. 创建下载链接
                     const a = document.createElement('a');
                     a.href = base64Url;
-                    // 自定义文件名
-                    const fileName = `${asset.label || 'entity'}_${Date.now()}.png`;
+                    const fileName = `${asset.type}_${asset.label || 'image'}_${Date.now()}.png`;
                     a.download = fileName;
-                    // 触发下载
                     a.click();
-                    // 清理临时元素
                     a.remove();
                     canvas.remove();
 
-                    console.log(`[EntityCard] 图片保存成功：${fileName}`);
+                    console.log(`[EntityCard] ${asset.type}图片保存成功：${fileName}`);
                 } catch (error) {
                     console.error('[EntityCard] 图片保存失败：', error);
                     alert('图片保存失败，请检查图片链接或网络！');
                 }
             };
 
-            // 显示弹窗
             modal.style.display = 'flex';
-            console.log(`[EntityCard] Entity double-clicked: ${asset.label} (preview opened)`);
+            console.log(`[EntityCard] ${asset.type} image double-clicked: ${asset.label} (preview opened)`);
         };
 
-        // 悬停效果
-        imgWrapper.onmouseenter = () => {
-            imgWrapper.style.borderColor = '#3B82F6';
-            imgWrapper.style.transform = 'scale(1.05)';
-        };
-        imgWrapper.onmouseleave = () => {
-            imgWrapper.style.borderColor = '#E5E7EB';
-            imgWrapper.style.transform = 'scale(1)';
-        };
-
+        // 组装元素（保留原有逻辑）
         imgWrapper.appendChild(img);
+        imgWrapper.appendChild(deleteBtn);
         container.appendChild(imgWrapper);
-        
     });
-    // ========== 3. 绘画面板拖拽接收逻辑（全局注册，只需执行一次） ==========
+
+    // ========== 保留原有：绘画面板拖拽接收逻辑 ==========
     const initCanvasDrop = () => {
-        // 替换为你的绘画面板ID（比如 <div id="drawing-board"></div>）
         const drawingBoard = document.getElementById('drawing-board');
         if (!drawingBoard || drawingBoard.dataset.dropInited) return;
 
-        // 标记已初始化，避免重复绑定
         drawingBoard.dataset.dropInited = 'true';
 
-        // 样式：拖拽进入时高亮
         drawingBoard.style.cssText += `
             min-height: 400px;
             border: 2px dashed #ccc;
@@ -330,51 +335,41 @@ export function updateEntityDisplay(nodeId, segmentedAssets) {
             overflow: hidden;
         `;
 
-        // 1. 阻止默认行为（否则浏览器会打开图片URL）
         drawingBoard.ondragover = (e) => {
             e.preventDefault();
-            e.dataTransfer.dropEffect = 'copy'; // 提示“复制”类型的拖拽
-            // 拖拽进入时高亮画板
+            e.dataTransfer.dropEffect = 'copy';
             drawingBoard.style.borderColor = '#3B82F6';
             drawingBoard.style.background = 'rgba(59, 130, 246, 0.05)';
         };
 
-        // 2. 拖拽离开时恢复样式
         drawingBoard.ondragleave = () => {
             drawingBoard.style.borderColor = '#ccc';
             drawingBoard.style.background = 'transparent';
         };
-
     };
 
-    // 初始化画板拖拽逻辑
     initCanvasDrop();
 }
 
-// ========== 辅助函数：让画板内的图片可拖拽调整位置 ==========
+// ========== 保留原有：辅助函数 ==========
 function makeDraggable(element) {
     let isDragging = false;
     let offsetX, offsetY;
 
     element.onmousedown = (e) => {
         isDragging = true;
-        // 计算鼠标相对于元素的偏移
         offsetX = e.clientX - element.getBoundingClientRect().left;
         offsetY = e.clientY - element.getBoundingClientRect().top;
-        // 提升层级，避免被遮挡
         element.style.zIndex = 20;
         element.style.cursor = 'grabbing';
     };
 
     document.onmousemove = (e) => {
         if (!isDragging) return;
-        // 获取画板容器
         const board = document.getElementById('drawing-board');
         const boardRect = board.getBoundingClientRect();
-        // 计算元素在画板内的位置
         const x = e.clientX - boardRect.left - offsetX;
         const y = e.clientY - boardRect.top - offsetY;
-        // 更新位置
         element.style.left = `${x}px`;
         element.style.top = `${y}px`;
     };

@@ -9,7 +9,7 @@ const allModules = [
   { id: 'ImageMerging', name: 'ImageMerging', type: 'preprocess' },
   { id: 'TextGenerateImage', name: 'TextToImage', type: 'image' },
   { id: 'ImageGenerateImage', name: 'ImageToImage', type: 'image' },
-  { id: 'PartialRepainting', name: 'PartialRepainting', type: 'image' },
+ 
   { id: 'ImageHDRestoration', name: 'ImageHDRestoration', type: 'image' },
   { id: 'Put_It_Here', name: 'ObjectMigration', type: 'image' },
   { id: 'TextGenerateVideo', name: 'TextToVideo', type: 'video' },
@@ -17,7 +17,8 @@ const allModules = [
   { id: 'CameraControl', name: 'CameraControl', type: 'video' },
   { id: 'FrameInterpolation', name: 'FrameInterpolation', type: 'video' },
   { id: 'FLFrameToVideo', name: 'FisrtAndLastFrameControl', type: 'video' },
-  { id: 'TextToAudio',name:'TextToAudio',type:'audio'}
+  { id: 'TextToAudio',name:'TextToAudio',type:'audio'},
+  { id: 'ImageInpainting',name:'ImageInpainting',type:'image'}
 ]
 
 /* 各模块参数定义 */
@@ -82,8 +83,9 @@ export const workflowParameters = {
     { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'denoise', label: 'denoise', type: 'number', defaultValue: 0.1, step: 0.01 }
   ],
-  PartialRepainting: [
-    { id: 'positive_prompt', label: 'Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your creative prompt...' },
+  ImageInpainting: [
+    { id: 'positive_prompt', label: 'Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your positive prompt...' },
+    { id: 'negative_prompt', label: 'Negative Prompt', type: 'textarea', defaultValue: '', placeholder: 'Your negative prompt...' },
     { id: 'seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
     { id: 'steps', label: 'Steps', type: 'number', defaultValue: 20 },
     { id: 'guidance', label: 'Guidance', type: 'number', defaultValue: 7.5, step: 0.1 }

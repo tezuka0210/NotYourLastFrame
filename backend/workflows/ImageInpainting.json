@@ -1,0 +1,203 @@
+{
+  "9": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "47:8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "17": {
+    "inputs": {
+      "image": "原图_1774001518549.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadImage"
+    }
+  },
+  "47:34": {
+    "inputs": {
+      "clip_name1": "clip_l.safetensors",
+      "clip_name2": "t5xxl_fp16.safetensors",
+      "type": "flux",
+      "device": "default"
+    },
+    "class_type": "DualCLIPLoader",
+    "_meta": {
+      "title": "双CLIP加载器"
+    }
+  },
+  "47:26": {
+    "inputs": {
+      "guidance": 30,
+      "conditioning": [
+        "47:23",
+        0
+      ]
+    },
+    "class_type": "FluxGuidance",
+    "_meta": {
+      "title": "FluxGuidance"
+    }
+  },
+  "47:32": {
+    "inputs": {
+      "vae_name": "ae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "47:31": {
+    "inputs": {
+      "unet_name": "flux1-fill-dev.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "47:46": {
+    "inputs": {
+      "conditioning": [
+        "47:23",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "条件零化"
+    }
+  },
+  "47:39": {
+    "inputs": {
+      "strength": 1,
+      "model": [
+        "47:31",
+        0
+      ]
+    },
+    "class_type": "DifferentialDiffusion",
+    "_meta": {
+      "title": "差异扩散DifferentialDiffusion"
+    }
+  },
+  "47:8": {
+    "inputs": {
+      "samples": [
+        "47:3",
+        0
+      ],
+      "vae": [
+        "47:32",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "47:3": {
+    "inputs": {
+      "seed": 479569779214608,
+      "steps": 20,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "normal",
+      "denoise": 1,
+      "model": [
+        "47:39",
+        0
+      ],
+      "positive": [
+        "47:38",
+        0
+      ],
+      "negative": [
+        "47:38",
+        1
+      ],
+      "latent_image": [
+        "47:38",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "47:38": {
+    "inputs": {
+      "noise_mask": true,
+      "positive": [
+        "47:26",
+        0
+      ],
+      "negative": [
+        "47:46",
+        0
+      ],
+      "vae": [
+        "47:32",
+        0
+      ],
+      "pixels": [
+        "17",
+        0
+      ],
+      "mask": [
+        "47:48",
+        0
+      ]
+    },
+    "class_type": "InpaintModelConditioning",
+    "_meta": {
+      "title": "内补模型条件"
+    }
+  },
+  "47:47": {
+    "inputs": {
+      "image": "标准mask_1774001522684.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadMask"
+    }
+  },
+  "47:48": {
+    "inputs": {
+      "channel": "red",
+      "image": [
+        "47:47",
+        0
+      ]
+    },
+    "class_type": "ImageToMask",
+    "_meta": {
+      "title": "图像转换为遮罩"
+    }
+  },
+  "47:23": {
+    "inputs": {
+      "text": "The woman is wearing a blue velvet long dress",
+      "clip": [
+        "47:34",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  }
+}
