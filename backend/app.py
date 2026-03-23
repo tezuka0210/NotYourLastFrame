@@ -29,8 +29,21 @@ from agents.knowledge_agent import knowledge_agent_node
 from agents.workflow_agent import workflow_selector_node
 from agents.prompt_agent import prompt_agent_node
 from agents.final_prompt_agent import final_prompt_agent_node 
-from agents.sam_agent import SAMAgent
-from agents.entity_agent import EntityAgent
+
+# --- 模式开关 ----
+APP_MODE = os.getenv('APP_MODE', 'local') 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+print(f"--- 应用程序正在以 {APP_MODE.upper()} 模式运行 ---")
+
+if APP_MODE != 'local':
+    from agents.sam_agent import SAMAgent
+    from agents.entity_agent import EntityAgent
+else:
+    # 本地模式定义空类，避免导入报错
+    class SAMAgent:
+        pass
+    class EntityAgent:
+        pass
 
 
 # --- 1. 初始化与配置 ---
@@ -38,13 +51,16 @@ from agents.entity_agent import EntityAgent
 load_dotenv()
 app = Flask(__name__, template_folder='templates')
 CORS(app)
-sam_service = SAMAgent()
-entity_v_agent = EntityAgent()
+if APP_MODE != 'local':
+    sam_service = SAMAgent()
+    entity_v_agent = EntityAgent()
+else:
+    sam_service = None  # 本地模式置空
+    entity_v_agent = None
 
-# --- 模式开关 ----
-APP_MODE = os.getenv('APP_MODE', 'server') 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-print(f"--- 应用程序正在以 {APP_MODE.upper()} 模式运行 ---")
+
+
+
 
 # --- 配置常量 ---
 COMFYUI_SERVER_ADDRESS = "223.193.6.178:8188" # ComfyUI后端的地址和端口
