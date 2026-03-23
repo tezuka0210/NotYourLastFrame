@@ -16,6 +16,42 @@ export function initCanvasDrag() {
   const MIN_SCALE = 0.5;
   const MAX_SCALE = 3;
 
+  let dragStartMouse = { x: 0, y: 0 };
+  let dragStartPos = { x: 0, y: 0 };
+  let dragRAF = null;
+  let pendingDragPos = null;
+
+  function setImagePosition(img, x, y) {
+    img.dataset.x = String(x);
+    img.dataset.y = String(y);
+    img.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+  }
+
+  function getImagePosition(img) {
+    return {
+      x: parseFloat(img.dataset.x || '0'),
+      y: parseFloat(img.dataset.y || '0')
+    };
+  }
+
+  function getImageRenderSize(img) {
+    const w = img.offsetWidth || parseFloat(img.style.width) || 100;
+    const h = img.offsetHeight || (
+      img.naturalWidth ? (w * img.naturalHeight / img.naturalWidth) : 100
+    );
+    return { w, h };
+  }
+
+  function clampImagePosition(img, x, y) {
+    const boardRect = drawingBoard.getBoundingClientRect();
+    const { w, h } = getImageRenderSize(img);
+
+    return {
+      x: Math.max(0, Math.min(boardRect.width - w, x)),
+      y: Math.max(0, Math.min(boardRect.height - h, y))
+    };
+  }
+
   let drawSubCanvasMode = false;
   let subCanvas = null;
   let subCanvasStart = { x: 0, y: 0 };
@@ -265,47 +301,65 @@ function extractDragData(e) {
 
       const img = new Image();
       img.onload = () => {
-        img.src = data.url;
-        img.style.cssText = `
-          position:absolute;
-          left:${x}px;
-          top:${y}px;
-          width:100px;
-          height:auto;
-          display:block;
-          border:1px solid #3bf;
-          border-radius:4px;
-          cursor:move;
-          z-index:10;
-          user-select:none;
-        `;
-        img.dataset.scale = '1';
-        img.draggable = false;
+      img.style.cssText = `
+        position:absolute;
+        left:0;
+        top:0;
+        width:100px;
+        height:auto;
+        display:block;
+        border:1px solid #3bf;
+        border-radius:4px;
+        cursor:grab;
+        z-index:10;
+        user-select:none;
+        will-change:transform;
+        transform:translate3d(0,0,0);
+      `;
+      img.dataset.scale = '1';
+      img.dataset.x = '0';
+      img.dataset.y = '0';
+      img.draggable = false;
 
-        drawingBoard.appendChild(img);
-        droppedImages.push({ element: img });
+      drawingBoard.appendChild(img);
 
-        img.addEventListener('mousedown', (ev) => {
-          if (paintMode) return;
-          ev.preventDefault();
-          draggingImg = img;
-          const ir = img.getBoundingClientRect();
-          dragOffset.x = ev.clientX - ir.left;
-          dragOffset.y = ev.clientY - ir.top;
-        });
+      const pos = clampImagePosition(img, x, y);
+      setImagePosition(img, pos.x, pos.y);
 
-        img.addEventListener('wheel', (ev) => {
-          if (paintMode) return;
-          ev.preventDefault();
-          let scale = parseFloat(img.dataset.scale || '1');
-          scale += ev.deltaY > 0 ? -0.1 : 0.1;
-          scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
-          img.dataset.scale = scale;
-          img.style.width = 100 * scale + 'px';
-        });
+      droppedImages.push({ element: img });
 
-        console.log('图片已成功添加到画布:', data.url);
-      };
+      img.addEventListener('mousedown', (ev) => {
+        if (paintMode) return;
+        ev.preventDefault();
+
+        draggingImg = img;
+        dragStartMouse = { x: ev.clientX, y: ev.clientY };
+        dragStartPos = getImagePosition(img);
+
+        document.body.style.userSelect = 'none';
+        document.body.style.webkitUserSelect = 'none';
+
+        img.style.pointerEvents = 'none';
+        img.style.cursor = 'grabbing';
+      });
+
+      img.addEventListener('wheel', (ev) => {
+        if (paintMode) return;
+        ev.preventDefault();
+
+        let scale = parseFloat(img.dataset.scale || '1');
+        scale += ev.deltaY > 0 ? -0.1 : 0.1;
+        scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+        img.dataset.scale = scale;
+        img.style.width = 100 * scale + 'px';
+
+        const current = getImagePosition(img);
+        const clamped = clampImagePosition(img, current.x, current.y);
+        setImagePosition(img, clamped.x, clamped.y);
+      });
+
+      console.log('图片已成功添加到画布:', data.url);
+    };
 
       img.onerror = () => {
         console.error('图片加载失败:', data.url);
@@ -374,17 +428,46 @@ function extractDragData(e) {
       drawSubCanvasMode = false;
     });
 
-    document.addEventListener('mousemove', e => {
+    document.addEventListener('mousemove', (e) => {
       if (!draggingImg || paintMode) return;
-      const r = drawingBoard.getBoundingClientRect();
-      let nx = e.clientX - r.left - dragOffset.x;
-      let ny = e.clientY - r.top - dragOffset.y;
-      draggingImg.style.left = nx + 'px';
-      draggingImg.style.top = ny + 'px';
+
+      const dx = e.clientX - dragStartMouse.x;
+      const dy = e.clientY - dragStartMouse.y;
+
+      const next = clampImagePosition(
+        draggingImg,
+        dragStartPos.x + dx,
+        dragStartPos.y + dy
+      );
+
+      pendingDragPos = next;
+
+      if (dragRAF) return;
+
+      dragRAF = requestAnimationFrame(() => {
+        if (draggingImg && pendingDragPos) {
+          setImagePosition(draggingImg, pendingDragPos.x, pendingDragPos.y);
+        }
+        dragRAF = null;
+      });
     });
 
     document.addEventListener('mouseup', () => {
+      if (dragRAF) {
+        cancelAnimationFrame(dragRAF);
+        dragRAF = null;
+      }
+
+      if (draggingImg) {
+        draggingImg.style.pointerEvents = 'auto';
+        draggingImg.style.cursor = 'grab';
+      }
+
+      document.body.style.userSelect = '';
+      document.body.style.webkitUserSelect = '';
+
       draggingImg = null;
+      pendingDragPos = null;
       isPainting = false;
     });
 
@@ -448,12 +531,14 @@ function extractDragData(e) {
           img.crossOrigin = 'anonymous';
           img.src = item.element.src;
           img.onload = () => {
-            const x = parseFloat(item.element.style.left) - clip.x;
-            const y = parseFloat(item.element.style.top) - clip.y;
-            const w = item.element.offsetWidth;
-            const h = item.element.offsetHeight;
-            ctx.drawImage(img, x, y, w, h);
-            resolve();
+          const pos = getImagePosition(item.element);
+          const x = pos.x - clip.x;
+          const y = pos.y - clip.y;
+          const w = item.element.offsetWidth;
+          const h = item.element.offsetHeight;
+          ctx.drawImage(img, x, y, w, h);
+
+          resolve();
           };
           img.onerror = resolve;
         });
@@ -487,8 +572,9 @@ function extractDragData(e) {
           img.crossOrigin = 'anonymous';
           img.src = item.element.src;
           img.onload = () => {
-            const x = parseFloat(item.element.style.left) - clip.x;
-            const y = parseFloat(item.element.style.top) - clip.y;
+            const pos = getImagePosition(item.element);
+            const x = pos.x - clip.x;
+            const y = pos.y - clip.y;
             const w = item.element.offsetWidth;
             const h = item.element.offsetHeight;
             ctx.drawImage(img, x, y, w, h);
