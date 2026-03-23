@@ -21,6 +21,182 @@ export function initCanvasDrag() {
   let dragRAF = null;
   let pendingDragPos = null;
 
+  const SCREEN_DPR = window.devicePixelRatio || 4;
+
+  // mask 画布分辨率，建议至少 2
+  const MASK_DPR = Math.max(2, SCREEN_DPR);
+
+  // 导出最大倍率，防止太大爆内存
+  const MAX_EXPORT_SCALE = 8;
+
+  const ENABLE_LIGHT_SR = true;
+
+  // 最多把原图先放大到原始尺寸的多少倍，参数可改
+  const SR_MAX_SOURCE_UPSCALE = 2.5;
+  // 分步放大倍率，1.4~1.8 比较稳
+  const SR_STEP_RATIO = 1.6;
+  // 锐化强度，0.25~0.55 比较自然
+  const SR_SHARPEN_AMOUNT = 0.42;
+  // 低于这个差值的细节不增强，防止噪点
+  const SR_EDGE_THRESHOLD = 4;
+  // 缓存，避免重复导出反复算
+  const srCache = new Map();
+
+function createWorkCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w));
+  c.height = Math.max(1, Math.round(h));
+  return c;
+}
+
+function loadImageAsync(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function progressiveUpscale(source, targetW, targetH) {
+  const srcW = source.naturalWidth || source.width;
+  const srcH = source.naturalHeight || source.height;
+
+  let current = createWorkCanvas(srcW, srcH);
+  let ctx = current.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(source, 0, 0, srcW, srcH);
+
+  while (current.width < targetW || current.height < targetH) {
+    const nextW = Math.min(
+      targetW,
+      Math.max(current.width + 1, Math.round(current.width * SR_STEP_RATIO))
+    );
+    const nextH = Math.min(
+      targetH,
+      Math.max(current.height + 1, Math.round(current.height * SR_STEP_RATIO))
+    );
+
+    const next = createWorkCanvas(nextW, nextH);
+    const nctx = next.getContext('2d', { willReadFrequently: true });
+    nctx.imageSmoothingEnabled = true;
+    nctx.imageSmoothingQuality = 'high';
+    nctx.drawImage(current, 0, 0, current.width, current.height, 0, 0, nextW, nextH);
+    current = next;
+  }
+
+  return current;
+}
+
+function applyLumaUnsharp(canvas, amount = SR_SHARPEN_AMOUNT, threshold = SR_EDGE_THRESHOLD) {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const { width, height } = canvas;
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
+
+  const size = width * height;
+  const luma = new Float32Array(size);
+  const blur = new Float32Array(size);
+
+  // 亮度
+  for (let i = 0, p = 0; i < size; i++, p += 4) {
+    luma[i] = 0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2];
+  }
+
+  // 很轻的 3x3 平滑
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let sum = 0;
+      let count = 0;
+
+      for (let ky = -1; ky <= 1; ky++) {
+        const yy = Math.max(0, Math.min(height - 1, y + ky));
+        for (let kx = -1; kx <= 1; kx++) {
+          const xx = Math.max(0, Math.min(width - 1, x + kx));
+          sum += luma[yy * width + xx];
+          count++;
+        }
+      }
+
+      blur[y * width + x] = sum / count;
+    }
+  }
+
+  // 仅增强亮度边缘，减少彩边
+  for (let i = 0, p = 0; i < size; i++, p += 4) {
+    const diff = luma[i] - blur[i];
+    if (Math.abs(diff) < threshold) continue;
+
+    const boost = diff * amount;
+    data[p] = Math.max(0, Math.min(255, data[p] + boost));
+    data[p + 1] = Math.max(0, Math.min(255, data[p + 1] + boost));
+    data[p + 2] = Math.max(0, Math.min(255, data[p + 2] + boost));
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+  return canvas;
+}
+
+async function buildLightSRSource(item, scale) {
+  const src = item.originalSrc || item.element.src;
+
+  const displayW = item.element.offsetWidth || parseFloat(item.element.style.width) || 100;
+  const displayH = item.element.offsetHeight || (
+    item.element.naturalWidth
+      ? displayW * item.element.naturalHeight / item.element.naturalWidth
+      : 100
+  );
+
+  const targetPxW = Math.max(1, Math.round(displayW * scale));
+  const targetPxH = Math.max(1, Math.round(displayH * scale));
+
+  const cacheKey = `${src}__${targetPxW}x${targetPxH}`;
+  if (srCache.has(cacheKey)) {
+    return srCache.get(cacheKey);
+  }
+
+  const img = await loadImageAsync(src);
+
+  const naturalW = img.naturalWidth || img.width;
+  const naturalH = img.naturalHeight || img.height;
+
+  // 如果原图已经足够，不做 SR，直接返回原图
+  if (targetPxW <= naturalW && targetPxH <= naturalH) {
+    srCache.set(cacheKey, img);
+    return img;
+  }
+
+  // 轻量策略：只先放大到原图的有限倍数
+  const srW = Math.min(targetPxW, Math.round(naturalW * SR_MAX_SOURCE_UPSCALE));
+  const srH = Math.min(targetPxH, Math.round(naturalH * SR_MAX_SOURCE_UPSCALE));
+
+  let work = progressiveUpscale(img, srW, srH);
+  work = applyLumaUnsharp(work);
+
+  srCache.set(cacheKey, work);
+  return work;
+}
+
+async function drawExportItem(ctx, item, clip, scale) {
+  try {
+    const renderable = ENABLE_LIGHT_SR
+      ? await buildLightSRSource(item, scale)
+      : await loadImageAsync(item.originalSrc || item.element.src);
+
+    const pos = getImagePosition(item.element);
+    const x = pos.x - clip.x;
+    const y = pos.y - clip.y;
+    const w = item.element.offsetWidth;
+    const h = item.element.offsetHeight;
+
+    ctx.drawImage(renderable, x, y, w, h);
+  } catch (err) {
+    console.error('导出图片处理失败:', err);
+  }
+}
+
   function setImagePosition(img, x, y) {
     img.dataset.x = String(x);
     img.dataset.y = String(y);
@@ -116,24 +292,48 @@ function extractDragData(e) {
     maskCanvas = document.createElement('canvas');
     maskCanvas.id = 'mask-canvas';
     maskCanvas.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      z-index: 999;
-      pointer-events: none;
+      position:absolute;
+      top:0;
+      left:0;
+      z-index:999;
+      pointer-events:none;
     `;
     drawingBoard.appendChild(maskCanvas);
+
     resizeMaskCanvas();
-    maskCtx = maskCanvas.getContext('2d');
     window.addEventListener('resize', resizeMaskCanvas);
   }
 
   function resizeMaskCanvas() {
     const r = drawingBoard.getBoundingClientRect();
-    maskCanvas.width = r.width;
-    maskCanvas.height = r.height;
-    maskCanvas.style.width = r.width + 'px';
-    maskCanvas.style.height = r.height + 'px';
+
+    // 保留旧内容
+    const prev = document.createElement('canvas');
+    if (maskCanvas.width && maskCanvas.height) {
+      prev.width = maskCanvas.width;
+      prev.height = maskCanvas.height;
+      const prevCtx = prev.getContext('2d');
+      prevCtx.drawImage(maskCanvas, 0, 0);
+    }
+
+    maskCanvas.width = Math.max(1, Math.round(r.width * MASK_DPR));
+    maskCanvas.height = Math.max(1, Math.round(r.height * MASK_DPR));
+    maskCanvas.style.width = `${r.width}px`;
+    maskCanvas.style.height = `${r.height}px`;
+
+    maskCtx = maskCanvas.getContext('2d');
+    maskCtx.setTransform(MASK_DPR, 0, 0, MASK_DPR, 0, 0);
+    maskCtx.imageSmoothingEnabled = true;
+    maskCtx.imageSmoothingQuality = 'high';
+
+    // 恢复旧内容
+    if (prev.width && prev.height) {
+      maskCtx.drawImage(
+        prev,
+        0, 0, prev.width, prev.height,
+        0, 0, r.width, r.height
+      );
+    }
   }
 
   function initTools() {
@@ -268,6 +468,7 @@ function extractDragData(e) {
       drawingBoard.innerHTML = '';
       if (mc) drawingBoard.appendChild(mc);
       droppedImages = [];
+      srCache.clear();
       maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
       subCanvas = null;
       tempDrawRect = null;
@@ -326,7 +527,10 @@ function extractDragData(e) {
       const pos = clampImagePosition(img, x, y);
       setImagePosition(img, pos.x, pos.y);
 
-      droppedImages.push({ element: img });
+      droppedImages.push({
+        element: img,
+        originalSrc: normalizeImageUrl(data.url)
+      });
 
       img.addEventListener('mousedown', (ev) => {
         if (paintMode) return;
@@ -503,51 +707,65 @@ function extractDragData(e) {
     maskCanvas.addEventListener('mouseleave', () => isPainting = false);
   }
 
-  function exportCanvasToImage(type) {
-    let clip = subCanvas ? {
-      x: parseFloat(subCanvas.style.left) || 0,
-      y: parseFloat(subCanvas.style.top) || 0,
-      w: parseFloat(subCanvas.style.width) || 0,
-      h: parseFloat(subCanvas.style.height) || 0
-    } : {
-      x: 0,
-      y: 0,
-      w: drawingBoard.offsetWidth,
-      h: drawingBoard.offsetHeight
-    };
+  function getRecommendedExportScale() {
+    const base = Math.max(2, SCREEN_DPR);
 
+    const ratios = droppedImages.map(({ element }) => {
+      const displayW = element.offsetWidth || parseFloat(element.style.width) || 100;
+      const naturalW = element.naturalWidth || displayW;
+      return naturalW / displayW;
+    }).filter(v => Number.isFinite(v) && v > 0);
+
+    return Math.min(MAX_EXPORT_SCALE, Math.max(base, ...ratios));
+  }
+
+  function createExportCanvas(clip, scale = getRecommendedExportScale()) {
     const c = document.createElement('canvas');
-    c.width = clip.w;
-    c.height = clip.h;
+    c.width = Math.max(1, Math.round(clip.w * scale));
+    c.height = Math.max(1, Math.round(clip.h * scale));
+    c.style.width = `${clip.w}px`;
+    c.style.height = `${clip.h}px`;
+
     const ctx = c.getContext('2d');
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    return { c, ctx, scale };
+  }
+
+  function exportCanvasToImage(type) {
+    const clip = subCanvas
+      ? {
+          x: parseFloat(subCanvas.style.left) || 0,
+          y: parseFloat(subCanvas.style.top) || 0,
+          w: parseFloat(subCanvas.style.width) || 0,
+          h: parseFloat(subCanvas.style.height) || 0
+        }
+      : {
+          x: 0,
+          y: 0,
+          w: drawingBoard.offsetWidth,
+          h: drawingBoard.offsetHeight
+        };
+
+    const { c, ctx, scale } = createExportCanvas(clip);
+
+    const finish = (filename, previewText) => {
+      const url = c.toDataURL('image/png');
+      console.log(`导出分辨率: ${c.width} x ${c.height}, scale=${scale.toFixed(2)}`);
+      download(url, `${filename}_${Date.now()}.png`);
+      updatePreview(url, `${previewText} ${c.width}x${c.height}`);
+    };
 
     if (type === 'origin') {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, clip.w, clip.h);
 
-      const tasks = droppedImages.map(item => {
-        return new Promise((resolve) => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.src = item.element.src;
-          img.onload = () => {
-          const pos = getImagePosition(item.element);
-          const x = pos.x - clip.x;
-          const y = pos.y - clip.y;
-          const w = item.element.offsetWidth;
-          const h = item.element.offsetHeight;
-          ctx.drawImage(img, x, y, w, h);
-
-          resolve();
-          };
-          img.onerror = resolve;
-        });
-      });
+      const tasks = droppedImages.map(item => drawExportItem(ctx, item, clip, scale));
 
       Promise.all(tasks).then(() => {
-        const url = c.toDataURL('image/png');
-        download(url, `原图_${Date.now()}.png`);
-        updatePreview(url, '白底原图');
+        finish('原图', '白底原图');
       });
       return;
     }
@@ -555,10 +773,20 @@ function extractDragData(e) {
     if (type === 'mask') {
       ctx.fillStyle = 'black';
       ctx.fillRect(0, 0, clip.w, clip.h);
-      ctx.drawImage(maskCanvas, clip.x, clip.y, clip.w, clip.h, 0, 0, clip.w, clip.h);
-      const url = c.toDataURL('image/png');
-      download(url, `标准mask_${Date.now()}.png`);
-      updatePreview(url, '黑底mask');
+
+      ctx.drawImage(
+        maskCanvas,
+        clip.x * MASK_DPR,
+        clip.y * MASK_DPR,
+        clip.w * MASK_DPR,
+        clip.h * MASK_DPR,
+        0,
+        0,
+        clip.w,
+        clip.h
+      );
+
+      finish('标准mask', '黑底mask');
       return;
     }
 
@@ -566,34 +794,30 @@ function extractDragData(e) {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, clip.w, clip.h);
 
-      const tasks = droppedImages.map(item => {
-        return new Promise((resolve) => {
-          const img = new Image();
-          img.crossOrigin = 'anonymous';
-          img.src = item.element.src;
-          img.onload = () => {
-            const pos = getImagePosition(item.element);
-            const x = pos.x - clip.x;
-            const y = pos.y - clip.y;
-            const w = item.element.offsetWidth;
-            const h = item.element.offsetHeight;
-            ctx.drawImage(img, x, y, w, h);
-            resolve();
-          };
-          img.onerror = resolve;
-        });
-      });
+      const tasks = droppedImages.map(item => drawExportItem(ctx, item, clip, scale));
 
       Promise.all(tasks).then(() => {
+        ctx.save();
         ctx.globalAlpha = 0.4;
-        ctx.drawImage(maskCanvas, clip.x, clip.y, clip.w, clip.h, 0, 0, clip.w, clip.h);
-        const url = c.toDataURL('image/png');
-        download(url, `合成图_${Date.now()}.png`);
-        updatePreview(url, '原图+mask');
+
+        ctx.drawImage(
+          maskCanvas,
+          clip.x * MASK_DPR,
+          clip.y * MASK_DPR,
+          clip.w * MASK_DPR,
+          clip.h * MASK_DPR,
+          0,
+          0,
+          clip.w,
+          clip.h
+        );
+
+        ctx.restore();
+
+        finish('合成图', '原图+mask');
       });
     }
   }
-
   function download(url, name) {
     const a = document.createElement('a');
     a.href = url;
