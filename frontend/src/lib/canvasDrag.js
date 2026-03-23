@@ -2,6 +2,14 @@ export function initCanvasDrag() {
   const drawingBoard = document.getElementById('drawing-board');
   if (!drawingBoard) return;
 
+  // 关键：让 drawingBoard 自己成为绝对定位子元素的参照物
+  drawingBoard.style.position = 'relative';
+  drawingBoard.style.overflow = 'hidden';
+
+  if (drawingBoard.parentElement) {
+    drawingBoard.parentElement.style.position = 'relative';
+  }
+
   let droppedImages = [];
   let draggingImg = null;
   let dragOffset = { x: 0, y: 0 };
@@ -19,6 +27,50 @@ export function initCanvasDrag() {
   let maskCanvas;
   let maskCtx;
   let brushSize = 10;
+
+  let lastDragData = null;
+
+// 如果你的前后端不是同域，把这里改成你的后端地址
+const API_BASE = window.API_BASE || '';
+
+function normalizeImageUrl(url) {
+  if (!url) return '';
+  if (/^(data:|blob:|https?:)/i.test(url)) return url;
+
+  if (API_BASE) {
+    if (url.startsWith('/')) return `${API_BASE}${url}`;
+    return `${API_BASE}/${url}`;
+  }
+
+  return url;
+}
+
+function extractDragData(e) {
+  const dt = e.dataTransfer;
+  if (!dt) return lastDragData;
+
+  const rawJson = dt.getData('application/json');
+  const rawPlain = dt.getData('text/plain');
+  const rawUri = dt.getData('text/uri-list');
+
+  const raw = rawJson || rawPlain || rawUri;
+
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.url) {
+        return {
+          ...parsed,
+          url: normalizeImageUrl(parsed.url)
+        };
+      }
+    } catch (_) {
+      return { url: normalizeImageUrl(raw.trim()) };
+    }
+  }
+
+  return lastDragData;
+}
 
   initMaskCanvas();
   initTools();
@@ -152,21 +204,26 @@ export function initCanvasDrag() {
   }
 
   function createDragContainer() {
-    const el = document.createElement('div');
-    el.id = 'canvas-drag-container';
-    el.style.cssText = 'margin-top:8px;padding:4px;border:1px dashed #3B82F6;border-radius:6px;text-align:center;background:#f0f9ff;';
-    el.innerText = '导出后可拖拽';
-    drawingBoard.parentElement.appendChild(el);
+    let el = document.getElementById('canvas-drag-container');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'canvas-drag-container';
+      el.style.cssText = `
+        margin-top:8px;
+        padding:8px;
+        border:1px dashed #3B82F6;
+        border-radius:6px;
+        text-align:center;
+        background:#f0f9ff;
+        min-height:80px;
+      `;
+      drawingBoard.parentElement.appendChild(el);
+    }
 
-    el.draggable = true;
-    el.addEventListener('dragstart', (e) => {
-      if (canvasExportImg) {
-        const dragData = { url: canvasExportImg, type: 'canvas-export', label: 'Canvas' };
-        e.dataTransfer.setData('text/plain', JSON.stringify(dragData));
-      }
-    });
+    el.innerHTML = `
+      <div style="font-size:12px;color:#2563eb;">导出后可拖拽</div>
+    `;
   }
-
   function bindClearButton() {
     const btn = document.getElementById('clear-canvas-btn');
     if (!btn) return;
@@ -191,54 +248,70 @@ export function initCanvasDrag() {
     drawingBoard.addEventListener('dragover', e => e.preventDefault());
     drawingBoard.addEventListener('dragleave', e => {});
 
-    drawingBoard.addEventListener('drop', e => {
+    drawingBoard.addEventListener('drop', (e) => {
       e.preventDefault();
-      let data;
-      try {
-        data = JSON.parse(e.dataTransfer.getData('text/plain'));
-      } catch {
-        data = { url: e.dataTransfer.getData('text/plain') };
+      e.stopPropagation();
+
+      const data = extractDragData(e);
+
+      if (!data || !data.url) {
+        console.warn('drop 没拿到有效图片地址', e.dataTransfer?.types);
+        return;
       }
-      if (!data.url) return;
 
       const r = drawingBoard.getBoundingClientRect();
-      const x = e.clientX - r.left - 50;
-      const y = e.clientY - r.top - 50;
+      const x = Math.max(0, Math.min(r.width - 100, e.clientX - r.left - 50));
+      const y = Math.max(0, Math.min(r.height - 100, e.clientY - r.top - 50));
 
-      const img = document.createElement('img');
-      img.src = data.url;
-      img.style.cssText = `
-        position:absolute;
-        left:${x}px;
-        top:${y}px;
-        width:100px;
-        height:auto;
-        border:1px solid #3bf;
-        border-radius:4px;
-        cursor:move;
-        z-index:10;
-      `;
-      droppedImages.push({ element: img });
-      drawingBoard.appendChild(img);
+      const img = new Image();
+      img.onload = () => {
+        img.src = data.url;
+        img.style.cssText = `
+          position:absolute;
+          left:${x}px;
+          top:${y}px;
+          width:100px;
+          height:auto;
+          display:block;
+          border:1px solid #3bf;
+          border-radius:4px;
+          cursor:move;
+          z-index:10;
+          user-select:none;
+        `;
+        img.dataset.scale = '1';
+        img.draggable = false;
 
-      img.addEventListener('mousedown', e => {
-        if (paintMode) return;
-        e.preventDefault();
-        draggingImg = img;
-        const ir = img.getBoundingClientRect();
-        dragOffset.x = e.clientX - ir.left;
-        dragOffset.y = e.clientY - ir.top;
-      });
+        drawingBoard.appendChild(img);
+        droppedImages.push({ element: img });
 
-      img.addEventListener('wheel', e => {
-        if (paintMode) return;
-        e.preventDefault();
-        let scale = +img.dataset.scale || 1;
-        scale += e.deltaY > 0 ? -0.1 : 0.1;
-        scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
-        img.dataset.scale = scale;
-        img.style.width = 100 * scale + 'px';
-      });
+        img.addEventListener('mousedown', (ev) => {
+          if (paintMode) return;
+          ev.preventDefault();
+          draggingImg = img;
+          const ir = img.getBoundingClientRect();
+          dragOffset.x = ev.clientX - ir.left;
+          dragOffset.y = ev.clientY - ir.top;
+        });
+
+        img.addEventListener('wheel', (ev) => {
+          if (paintMode) return;
+          ev.preventDefault();
+          let scale = parseFloat(img.dataset.scale || '1');
+          scale += ev.deltaY > 0 ? -0.1 : 0.1;
+          scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, scale));
+          img.dataset.scale = scale;
+          img.style.width = 100 * scale + 'px';
+        });
+
+        console.log('图片已成功添加到画布:', data.url);
+      };
+
+      img.onerror = () => {
+        console.error('图片加载失败:', data.url);
+      };
+
+      img.src = normalizeImageUrl(data.url);
     });
 
     drawingBoard.addEventListener('mousedown', e => {
@@ -447,11 +520,42 @@ export function initCanvasDrag() {
   function updatePreview(url, text) {
     const box = document.getElementById('canvas-drag-container');
     if (!box) return;
+
     canvasExportImg = url;
+
     box.innerHTML = `
-      <img src="${url}" style="max-width:100%;max-height:100px;border-radius:4px;">
-      <div style="font-size:10px;color:#3B82F6;margin-top:4px;">${text} | 可拖拽</div>
+      <div id="canvas-drag-preview"
+          draggable="true"
+          style="display:flex;flex-direction:column;align-items:center;gap:6px;cursor:grab;">
+        <img src="${url}"
+            draggable="false"
+            style="max-width:100%;max-height:100px;border-radius:4px;display:block;border:1px solid #cbd5e1;">
+        <div style="font-size:10px;color:#3B82F6;">${text} | 拖到画布</div>
+      </div>
     `;
+
+    const preview = document.getElementById('canvas-drag-preview');
+    preview.addEventListener('dragstart', (e) => {
+      if (!canvasExportImg) {
+        e.preventDefault();
+        return;
+      }
+
+      const dragData = {
+        url: canvasExportImg,
+        type: 'canvas-export',
+        label: 'Canvas'
+      };
+
+      lastDragData = dragData;
+
+      e.dataTransfer.effectAllowed = 'copy';
+      e.dataTransfer.setData('application/json', JSON.stringify(dragData));
+      e.dataTransfer.setData('text/plain', JSON.stringify(dragData));
+
+      const dragImg = preview.querySelector('img') || preview;
+      e.dataTransfer.setDragImage(dragImg, 30, 30);
+    });
   }
 }
 
