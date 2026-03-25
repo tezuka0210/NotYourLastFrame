@@ -130,8 +130,9 @@
       <div
         id="drawing-board"
         class="drawing-board"
-        :style="boardSurfaceStyle"
       >
+        <div id="drawing-scene" class="drawing-scene"></div>
+
         <div class="canvas-placeholder absolute inset-0 flex items-center justify-center text-gray-300">
           <svg viewBox="0 0 24 24" class="w-7 h-7 opacity-70" fill="none" stroke="currentColor" stroke-width="1.7">
             <rect x="4" y="4" width="16" height="16" rx="2" />
@@ -145,33 +146,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+
+import { onMounted } from 'vue'
 import { initCanvasDrag } from '@/lib/canvasDrag.js'
-
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value))
-}
-
-const previewScale = ref(1)
-
-const boardSurfaceStyle = computed(() => {
-  const scale = clamp(previewScale.value, 0.75, 2.2)
-  const dotGap = clamp(18 * scale, 14, 30)
-  const dotSize = clamp(1.45 * scale, 1.1, 2.6)
-  const dotAlpha = clamp(0.10 + (scale - 1) * 0.03, 0.08, 0.17)
-
-  return {
-    '--board-dot-gap': `${dotGap}px`,
-    '--board-dot-size': `${dotSize}px`,
-    '--board-dot-alpha': `${dotAlpha}`,
-  } as Record<string, string>
-})
-
-defineExpose({
-  setPreviewScale(scale: number) {
-    previewScale.value = clamp(scale, 0.75, 2.2)
-  },
-})
 
 onMounted(() => {
   initCanvasDrag()
@@ -282,9 +259,14 @@ onMounted(() => {
   min-height: 0;
   padding: 0 2px;
   display: flex;
+  overflow: hidden;
 }
 
 .drawing-board {
+  --board-dot-gap: 24px;
+  --board-dot-size: 1px;
+  --board-dot-alpha: 0.085;
+
   position: relative;
   flex: 1 1 auto;
   min-height: 300px;
@@ -297,8 +279,9 @@ onMounted(() => {
   background-image:
     radial-gradient(
       circle,
-      rgba(148, 163, 184, calc(var(--board-dot-alpha) + 0.03)) 1.4px,
-      transparent 1.5px
+      rgba(148, 148, 148, var(--board-dot-alpha)) 0,
+      rgba(148, 148, 148, var(--board-dot-alpha)) var(--board-dot-size),
+      transparent calc(var(--board-dot-size) + 0.35px)
     );
   background-size: var(--board-dot-gap) var(--board-dot-gap);
   background-position: center center;
@@ -314,6 +297,19 @@ onMounted(() => {
   pointer-events: none;
   box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.03);
   border-radius: inherit;
+}
+
+.drawing-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: visible;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+.drawing-board.is-panning {
+  cursor: grabbing;
 }
 
 #drawing-board.dragover {
@@ -335,13 +331,14 @@ onMounted(() => {
 }
 
 .canvas-placeholder {
+  z-index: 0;
+  pointer-events: none;
   user-select: none;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
 }
 
-#drawing-board:has(img) .canvas-placeholder {
-  display: none;
+#drawing-board.has-content .canvas-placeholder {
+  opacity: 0;
+  visibility: hidden;
 }
-
-
 </style>
