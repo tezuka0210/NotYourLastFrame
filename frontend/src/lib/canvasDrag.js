@@ -1643,10 +1643,12 @@ export function initCanvasDrag() {
       const sortedItems = getSortedItems();
       await drawExportItemsInOrder(ctx, sortedItems, clip, scale);
 
-      ctx.save();
-      ctx.globalAlpha = 0.4;
-      drawMaskClipToContext(ctx, clip);
-      ctx.restore();
+      if (options.includeMask !== false) {
+        ctx.save();
+        ctx.globalAlpha = 1;
+        drawMaskClipToContext(ctx, clip);
+        ctx.restore();
+      }
 
       drawLabelsToCanvas(ctx, sortedItems, clip);
       finish('composite', 'Composite');
@@ -1940,7 +1942,8 @@ export function initCanvasDrag() {
     if (exportCompositeBtn) {
       exportCompositeBtn.onclick = () => exportCanvasToImage('combined', {
         download: true,
-        emitToBuffer: false
+        emitToBuffer: false,
+        includeMask: false
       });
     }
 
