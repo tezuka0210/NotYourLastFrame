@@ -472,6 +472,8 @@ html, body, #app {
 .title-bar {
   flex: 0 0 40px;
   min-height: 40px;
+  width: min(var(--page-max-width), calc(100vw - 20px));
+  margin: 0 auto;
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -495,11 +497,11 @@ html, body, #app {
 
 .title-main h1 {
   margin: 0;
-  font-size: 14px;
-  line-height: 1;
+  font-size: 13px;
+  line-height: 1.1;
   font-weight: 700;
   color: #ffffff;
-  text-shadow: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.14);
 }
 
 /* Main shell */
@@ -559,8 +561,8 @@ html, body, #app {
   top: 10px;
   left: 10px;
   z-index: 20;
-  width: 28px;
-  height: 44px;
+  width: 26px;
+  height: 26px;
   border: none;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.96);

@@ -2366,10 +2366,15 @@ export function initCanvasDrag() {
     if (type === 'origin') {
       ctx.clearRect(0, 0, clip.w, clip.h);
       const sortedItems = getSortedItems();
+
       await drawExportItemsInOrder(ctx, sortedItems, clip, scale, {
         includeMask: false
       });
-      drawLabelsToCanvas(ctx, sortedItems.filter(it => it.kind !== 'mask'), clip);
+
+      if (options.includeLabels !== false) {
+        drawLabelsToCanvas(ctx, sortedItems.filter(it => it.kind !== 'mask'), clip);
+      }
+
       finish('source', 'Source');
       return;
     }
@@ -2377,10 +2382,15 @@ export function initCanvasDrag() {
     if (type === 'combined') {
       ctx.clearRect(0, 0, clip.w, clip.h);
       const sortedItems = getSortedItems();
+
       await drawExportItemsInOrder(ctx, sortedItems, clip, scale, {
         includeMask: options.includeMask !== false
       });
-      drawLabelsToCanvas(ctx, sortedItems, clip);
+
+      if (options.includeLabels !== false) {
+        drawLabelsToCanvas(ctx, sortedItems, clip);
+      }
+
       finish('composite', 'Composite');
       return;
     }
@@ -2672,7 +2682,8 @@ export function initCanvasDrag() {
       collectBufferBtn.onclick = () => exportCanvasToImage('combined', {
         download: false,
         emitToBuffer: true,
-        previewText: 'Canvas'
+        previewText: 'Canvas',
+        includeLabels: false
       });
     }
 
@@ -2869,7 +2880,7 @@ export function initCanvasDrag() {
 
     return item;
   }
-  
+
   function bindEvents() {
     drawingBoard.addEventListener('contextmenu', e => {
       e.preventDefault();
