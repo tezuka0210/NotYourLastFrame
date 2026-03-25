@@ -84,6 +84,17 @@ export function initCanvasDrag() {
   let isPainting = false;
   let maskCanvas;
   let maskCtx;
+
+  let maskSceneCanvas;
+  let maskSceneCtx;
+
+  let paintLastScenePoint = null;
+  let paintLastBoardPoint = null;
+
+  // 这个尺寸可以继续加大，基本够用了
+  const SAFE_MASK_SCENE_MAX = 4096;
+  let MASK_SCENE_SIZE = 4096;
+  let MASK_SCENE_ORIGIN = MASK_SCENE_SIZE / 2;
   let brushSize = 10;
 
   let regionColor = '#4b5563';
@@ -123,23 +134,59 @@ export function initCanvasDrag() {
     return url;
   }
 
+  function isLikelyPreviewField(key, url) {
+    const lower = String(url || '').toLowerCase();
+
+    return (
+      key === 'thumbnailUrl' ||
+      key === 'imageUrl' ||
+      /thumb|thumbnail|preview|poster|card|snapshot/.test(lower)
+    );
+  }
+
   function resolveDroppedImageUrl(data) {
     if (!data) return '';
 
-    const candidate =
-      data.mediaUrl ||
-      data.imageUrl ||
-      data.originalUrl ||
-      data.fullUrl ||
-      data.url ||
-      data.thumbnailUrl ||
-      '';
+    const candidates = [
+      ['originalUrl', data.originalUrl],
+      ['fullUrl', data.fullUrl],
+      ['mediaUrl', data.mediaUrl],
+      ['sourceUrl', data.sourceUrl],
+      ['assetUrl', data.assetUrl],
+      ['url', data.url],
+      ['imageUrl', data.imageUrl],
+      ['thumbnailUrl', data.thumbnailUrl],
+    ]
+      .map(([key, value]) => [key, typeof value === 'string' ? normalizeImageUrl(value.trim()) : ''])
+      .filter(([, value]) => !!value);
 
-    return normalizeImageUrl(candidate);
+    if (!candidates.length) return '';
+
+    // 优先选“看起来不是预览图”的字段
+    const nonPreview = candidates.find(([key, value]) => !isLikelyPreviewField(key, value));
+    if (nonPreview) return nonPreview[1];
+
+    // 实在没有就退回第一个可用字段
+    return candidates[0][1];
   }
 
   function getBoardRect() {
     return drawingBoard.getBoundingClientRect();
+  }
+
+  function computeMaskSceneSize() {
+    const rect = getBoardRect();
+    const base = Math.max(rect.width, rect.height);
+
+    // 取 viewport 的 4 倍范围，足够当前交互使用
+    // 并限制最大 4096，避免再次进入超大 canvas 不稳定区
+    const size = Math.min(
+      SAFE_MASK_SCENE_MAX,
+      Math.max(2048, Math.ceil((base * 4) / 256) * 256)
+    );
+
+    MASK_SCENE_SIZE = size;
+    MASK_SCENE_ORIGIN = size / 2;
   }
 
   function getBoardPoint(clientX, clientY) {
@@ -164,6 +211,172 @@ export function initCanvasDrag() {
       y: y * camera.scale + camera.y
     };
   }
+
+  function sceneToMaskBufferPoint(sceneX, sceneY) {
+    return {
+      x: sceneX + MASK_SCENE_ORIGIN,
+      y: sceneY + MASK_SCENE_ORIGIN
+    };
+  }
+
+  function resolveMaskDrawParams(sceneLeft, sceneTop, sceneWidth, sceneHeight, destWidth, destHeight) {
+    if (!maskSceneCanvas) return null;
+
+    let srcX = sceneLeft + MASK_SCENE_ORIGIN;
+    let srcY = sceneTop + MASK_SCENE_ORIGIN;
+    let srcW = sceneWidth;
+    let srcH = sceneHeight;
+
+    let dstX = 0;
+    let dstY = 0;
+    let dstW = destWidth;
+    let dstH = destHeight;
+
+    const scaleX = destWidth / sceneWidth;
+    const scaleY = destHeight / sceneHeight;
+
+    const maxW = maskSceneCanvas.width;
+    const maxH = maskSceneCanvas.height;
+
+    if (srcX < 0) {
+      const cut = -srcX;
+      srcX = 0;
+      srcW -= cut;
+      dstX += cut * scaleX;
+      dstW -= cut * scaleX;
+    }
+
+    if (srcY < 0) {
+      const cut = -srcY;
+      srcY = 0;
+      srcH -= cut;
+      dstY += cut * scaleY;
+      dstH -= cut * scaleY;
+    }
+
+    if (srcX + srcW > maxW) {
+      const cut = srcX + srcW - maxW;
+      srcW -= cut;
+      dstW -= cut * scaleX;
+    }
+
+    if (srcY + srcH > maxH) {
+      const cut = srcY + srcH - maxH;
+      srcH -= cut;
+      dstH -= cut * scaleY;
+    }
+
+    if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) {
+      return null;
+    }
+
+    return {
+      srcX,
+      srcY,
+      srcW,
+      srcH,
+      dstX,
+      dstY,
+      dstW,
+      dstH
+    };
+  }
+
+  function clientToScenePoint(clientX, clientY) {
+    return screenToScene(clientX, clientY);
+  }
+
+  function clearViewportMask() {
+    if (!maskCtx || !maskCanvas) return;
+
+    maskCtx.save();
+    maskCtx.setTransform(1, 0, 0, 1, 0, 0);
+    maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+    maskCtx.restore();
+  }
+
+  function renderMaskViewport() {
+    if (!maskCtx || !maskCanvas || !maskSceneCanvas) return;
+
+    clearViewportMask();
+
+    const boardW = maskCanvas.width / MASK_DPR;
+    const boardH = maskCanvas.height / MASK_DPR;
+
+    const sceneLeft = (-camera.x) / camera.scale;
+    const sceneTop = (-camera.y) / camera.scale;
+    const sceneWidth = boardW / camera.scale;
+    const sceneHeight = boardH / camera.scale;
+
+    const params = resolveMaskDrawParams(
+      sceneLeft,
+      sceneTop,
+      sceneWidth,
+      sceneHeight,
+      boardW,
+      boardH
+    );
+
+    if (!params) return;
+
+    maskCtx.save();
+    maskCtx.drawImage(
+      maskSceneCanvas,
+      params.srcX,
+      params.srcY,
+      params.srcW,
+      params.srcH,
+      params.dstX,
+      params.dstY,
+      params.dstW,
+      params.dstH
+    );
+    maskCtx.restore();
+  }
+
+  function getSceneBrushSize() {
+    return brushSize / camera.scale;
+  }
+
+  function paintDot(scenePoint, boardPoint) {
+    const sceneBrushSize = getSceneBrushSize();
+    const sceneBufferPoint = sceneToMaskBufferPoint(scenePoint.x, scenePoint.y);
+
+    maskSceneCtx.beginPath();
+    maskSceneCtx.arc(sceneBufferPoint.x, sceneBufferPoint.y, sceneBrushSize / 2, 0, Math.PI * 2);
+    maskSceneCtx.fillStyle = paintColor;
+    maskSceneCtx.fill();
+
+    maskCtx.beginPath();
+    maskCtx.arc(boardPoint.x, boardPoint.y, brushSize / 2, 0, Math.PI * 2);
+    maskCtx.fillStyle = paintColor;
+    maskCtx.fill();
+  }
+
+  function paintSegment(fromScene, toScene, fromBoard, toBoard) {
+    const sceneBrushSize = getSceneBrushSize();
+
+    const p0 = sceneToMaskBufferPoint(fromScene.x, fromScene.y);
+    const p1 = sceneToMaskBufferPoint(toScene.x, toScene.y);
+
+    maskSceneCtx.beginPath();
+    maskSceneCtx.moveTo(p0.x, p0.y);
+    maskSceneCtx.lineTo(p1.x, p1.y);
+    maskSceneCtx.lineWidth = sceneBrushSize;
+    maskSceneCtx.lineCap = 'round';
+    maskSceneCtx.lineJoin = 'round';
+    maskSceneCtx.strokeStyle = paintColor;
+    maskSceneCtx.stroke();
+
+    maskCtx.beginPath();
+    maskCtx.moveTo(fromBoard.x, fromBoard.y);
+    maskCtx.lineTo(toBoard.x, toBoard.y);
+    maskCtx.lineWidth = brushSize;
+    maskCtx.lineCap = 'round';
+    maskCtx.lineJoin = 'round';
+    maskCtx.strokeStyle = paintColor;
+    maskCtx.stroke();
+  }  
 
   function syncBoardContentState() {
     drawingBoard.classList.toggle('has-content', droppedImages.length > 0);
@@ -199,6 +412,7 @@ export function initCanvasDrag() {
   function applyBoardCamera() {
     drawingScene.style.transform = `translate3d(${camera.x}px, ${camera.y}px, 0) scale(${camera.scale})`;
     updateBoardBackground();
+    renderMaskViewport();
 
     droppedImages.forEach(updateDeleteHandlePosition);
     subCanvases.forEach(updateDeleteHandlePosition);
@@ -1249,15 +1463,12 @@ export function initCanvasDrag() {
   }
 
   function captureMaskRegionForDrag(region) {
-    if (!maskCanvas || !maskCtx) return null;
+    if (!maskSceneCanvas || !maskSceneCtx) return null;
 
-    const clip = getClipFromRegion(region);
-    const sx = Math.max(0, Math.round(clip.x * MASK_DPR));
-    const sy = Math.max(0, Math.round(clip.y * MASK_DPR));
-    const sw = Math.max(1, Math.round(clip.w * MASK_DPR));
-    const sh = Math.max(1, Math.round(clip.h * MASK_DPR));
-
-    if (sw <= 0 || sh <= 0) return null;
+    const sx = Math.round(region.x + MASK_SCENE_ORIGIN);
+    const sy = Math.round(region.y + MASK_SCENE_ORIGIN);
+    const sw = Math.max(1, Math.round(region.w));
+    const sh = Math.max(1, Math.round(region.h));
 
     const snapshot = document.createElement('canvas');
     snapshot.width = sw;
@@ -1265,24 +1476,20 @@ export function initCanvasDrag() {
 
     const sctx = snapshot.getContext('2d');
     sctx.drawImage(
-      maskCanvas,
+      maskSceneCanvas,
       sx, sy, sw, sh,
       0, 0, sw, sh
     );
 
-    // 从原位置先清掉
-    maskCtx.clearRect(clip.x, clip.y, clip.w, clip.h);
+    // 从旧位置清掉
+    maskSceneCtx.clearRect(sx, sy, sw, sh);
+    renderMaskViewport();
 
-    // 拖拽期间的预览层
     const preview = document.createElement('canvas');
     preview.width = sw;
     preview.height = sh;
     preview.style.cssText = `
       position:absolute;
-      left:${clip.x}px;
-      top:${clip.y}px;
-      width:${clip.w}px;
-      height:${clip.h}px;
       pointer-events:none;
       z-index:41;
     `;
@@ -1295,41 +1502,44 @@ export function initCanvasDrag() {
     return {
       snapshot,
       preview,
-      startClip: clip
+      startRect: { x: region.x, y: region.y, w: region.w, h: region.h }
     };
   }
 
   function updateMaskRegionPreview(maskState, region) {
     if (!maskState?.preview) return;
 
-    const clip = getClipFromRegion(region);
-    maskState.preview.style.left = `${clip.x}px`;
-    maskState.preview.style.top = `${clip.y}px`;
-    maskState.preview.style.width = `${clip.w}px`;
-    maskState.preview.style.height = `${clip.h}px`;
+    const topLeft = sceneToScreen(region.x, region.y);
+
+    maskState.preview.style.left = `${topLeft.x}px`;
+    maskState.preview.style.top = `${topLeft.y}px`;
+    maskState.preview.style.width = `${region.w * camera.scale}px`;
+    maskState.preview.style.height = `${region.h * camera.scale}px`;
   }
 
   function commitMaskRegionDrag(maskState, region) {
-    if (!maskState?.snapshot || !maskCtx) return;
+    if (!maskState?.snapshot || !maskSceneCtx) return;
 
-    const clip = getClipFromRegion(region);
+    const dx = Math.round(region.x + MASK_SCENE_ORIGIN);
+    const dy = Math.round(region.y + MASK_SCENE_ORIGIN);
+    const dw = Math.max(1, Math.round(region.w));
+    const dh = Math.max(1, Math.round(region.h));
 
-    maskCtx.drawImage(
+    maskSceneCtx.drawImage(
       maskState.snapshot,
       0, 0,
       maskState.snapshot.width,
       maskState.snapshot.height,
-      clip.x,
-      clip.y,
-      clip.w,
-      clip.h
+      dx, dy,
+      dw, dh
     );
 
     if (maskState.preview?.parentNode) {
       maskState.preview.parentNode.removeChild(maskState.preview);
     }
-  }
 
+    renderMaskViewport();
+  }
   function clearMaskRegionDragState(maskState) {
     if (!maskState) return;
     if (maskState.preview?.parentNode) {
@@ -1338,23 +1548,34 @@ export function initCanvasDrag() {
   }
 
   function drawMaskClipToContext(ctx, clip) {
-    if (!maskCanvas) return;
+    if (!maskSceneCanvas) return;
 
-    const sx = clip.x * MASK_DPR;
-    const sy = clip.y * MASK_DPR;
-    const sw = clip.w * MASK_DPR;
-    const sh = clip.h * MASK_DPR;
+    const sceneLeft = (clip.x - camera.x) / camera.scale;
+    const sceneTop = (clip.y - camera.y) / camera.scale;
+    const sceneWidth = clip.w / camera.scale;
+    const sceneHeight = clip.h / camera.scale;
 
-    ctx.drawImage(
-      maskCanvas,
-      sx,
-      sy,
-      sw,
-      sh,
-      0,
-      0,
+    const params = resolveMaskDrawParams(
+      sceneLeft,
+      sceneTop,
+      sceneWidth,
+      sceneHeight,
       clip.w,
       clip.h
+    );
+
+    if (!params) return;
+
+    ctx.drawImage(
+      maskSceneCanvas,
+      params.srcX,
+      params.srcY,
+      params.srcW,
+      params.srcH,
+      params.dstX,
+      params.dstY,
+      params.dstW,
+      params.dstH
     );
   }
 
@@ -1414,6 +1635,7 @@ export function initCanvasDrag() {
 
       drawLabelsToCanvas(ctx, sortedItems, clip);
       finish('composite', 'Composite');
+      return;
     }
 
     if (type === 'mask') {
@@ -1497,6 +1719,8 @@ export function initCanvasDrag() {
   }
 
   function initMaskCanvas() {
+    computeMaskSceneSize();
+
     maskCanvas = document.createElement('canvas');
     maskCanvas.id = 'mask-canvas';
     maskCanvas.style.cssText = `
@@ -1507,20 +1731,51 @@ export function initCanvasDrag() {
     `;
     drawingBoard.appendChild(maskCanvas);
 
+    maskSceneCanvas = document.createElement('canvas');
+    maskSceneCanvas.width = MASK_SCENE_SIZE;
+    maskSceneCanvas.height = MASK_SCENE_SIZE;
+
+    maskSceneCtx = maskSceneCanvas.getContext('2d', { willReadFrequently: true });
+    maskSceneCtx.imageSmoothingEnabled = true;
+    maskSceneCtx.imageSmoothingQuality = 'high';
+
     resizeMaskCanvas();
     window.addEventListener('resize', resizeMaskCanvas);
   }
 
   function resizeMaskCanvas() {
-    const r = getBoardRect();
-
-    const prev = document.createElement('canvas');
-    if (maskCanvas.width && maskCanvas.height) {
-      prev.width = maskCanvas.width;
-      prev.height = maskCanvas.height;
-      const prevCtx = prev.getContext('2d');
-      prevCtx.drawImage(maskCanvas, 0, 0);
+    const prevScene = document.createElement('canvas');
+    if (maskSceneCanvas) {
+      prevScene.width = maskSceneCanvas.width;
+      prevScene.height = maskSceneCanvas.height;
+      const prevCtx = prevScene.getContext('2d');
+      prevCtx.drawImage(maskSceneCanvas, 0, 0);
     }
+
+    computeMaskSceneSize();
+
+    if (!maskSceneCanvas) {
+      maskSceneCanvas = document.createElement('canvas');
+    }
+
+    const oldSize = maskSceneCanvas.width || 0;
+    const oldOrigin = oldSize / 2;
+
+    maskSceneCanvas.width = MASK_SCENE_SIZE;
+    maskSceneCanvas.height = MASK_SCENE_SIZE;
+
+    maskSceneCtx = maskSceneCanvas.getContext('2d', { willReadFrequently: true });
+    maskSceneCtx.imageSmoothingEnabled = true;
+    maskSceneCtx.imageSmoothingQuality = 'high';
+
+    if (prevScene.width && prevScene.height) {
+      // 旧内容平移到新 origin
+      const dx = MASK_SCENE_ORIGIN - oldOrigin;
+      const dy = MASK_SCENE_ORIGIN - oldOrigin;
+      maskSceneCtx.drawImage(prevScene, dx, dy);
+    }
+
+    const r = getBoardRect();
 
     maskCanvas.width = Math.max(1, Math.round(r.width * MASK_DPR));
     maskCanvas.height = Math.max(1, Math.round(r.height * MASK_DPR));
@@ -1531,14 +1786,6 @@ export function initCanvasDrag() {
     maskCtx.setTransform(MASK_DPR, 0, 0, MASK_DPR, 0, 0);
     maskCtx.imageSmoothingEnabled = true;
     maskCtx.imageSmoothingQuality = 'high';
-
-    if (prev.width && prev.height) {
-      maskCtx.drawImage(
-        prev,
-        0, 0, prev.width, prev.height,
-        0, 0, r.width, r.height
-      );
-    }
 
     applyBoardCamera();
   }
@@ -1709,6 +1956,9 @@ export function initCanvasDrag() {
 
       if (maskCtx && maskCanvas) {
         maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+      }
+      if (maskSceneCtx && maskSceneCanvas) {
+        maskSceneCtx.clearRect(0, 0, maskSceneCanvas.width, maskSceneCanvas.height);
       }
 
       subCanvases.forEach(region => {
@@ -2112,37 +2362,52 @@ export function initCanvasDrag() {
       isPainting = false;
     });
 
-    maskCanvas.addEventListener('mousedown', e => {
-      if (!paintMode) return;
-      isPainting = true;
+  maskCanvas.addEventListener('mousedown', e => {
+    if (!paintMode) return;
 
-      const p = getBoardPoint(e.clientX, e.clientY);
+    isPainting = true;
 
-      maskCtx.beginPath();
-      maskCtx.arc(p.x, p.y, brushSize / 2, 0, Math.PI * 2);
-      maskCtx.fillStyle = paintColor;
-      maskCtx.fill();
-      maskCtx.beginPath();
-      maskCtx.moveTo(p.x, p.y);
-    });
+    const scenePoint = clientToScenePoint(e.clientX, e.clientY);
+    const boardPoint = getBoardPoint(e.clientX, e.clientY);
 
-    maskCanvas.addEventListener('mousemove', e => {
-      if (!isPainting) return;
+    paintDot(scenePoint, boardPoint);
 
-      const p = getBoardPoint(e.clientX, e.clientY);
+    paintLastScenePoint = scenePoint;
+    paintLastBoardPoint = boardPoint;
+  });
 
-      maskCtx.lineTo(p.x, p.y);
-      maskCtx.lineWidth = brushSize;
-      maskCtx.lineCap = 'round';
-      maskCtx.lineJoin = 'round';
-      maskCtx.strokeStyle = paintColor;
-      maskCtx.stroke();
-      maskCtx.beginPath();
-      maskCtx.moveTo(p.x, p.y);
-    });
+  maskCanvas.addEventListener('mousemove', e => {
+    if (!isPainting) return;
 
-    maskCanvas.addEventListener('mouseup', () => { isPainting = false; });
-    maskCanvas.addEventListener('mouseleave', () => { isPainting = false; });
+    const scenePoint = clientToScenePoint(e.clientX, e.clientY);
+    const boardPoint = getBoardPoint(e.clientX, e.clientY);
+
+    if (!paintLastScenePoint || !paintLastBoardPoint) {
+      paintDot(scenePoint, boardPoint);
+    } else {
+      paintSegment(
+        paintLastScenePoint,
+        scenePoint,
+        paintLastBoardPoint,
+        boardPoint
+      );
+    }
+
+    paintLastScenePoint = scenePoint;
+    paintLastBoardPoint = boardPoint;
+  });
+
+  maskCanvas.addEventListener('mouseup', () => {
+    isPainting = false;
+    paintLastScenePoint = null;
+    paintLastBoardPoint = null;
+  });
+
+  maskCanvas.addEventListener('mouseleave', () => {
+    isPainting = false;
+    paintLastScenePoint = null;
+    paintLastBoardPoint = null;
+  });
 
     drawingBoard.addEventListener('mousedown', e => {
       const isEmptyTarget =

@@ -3085,6 +3085,64 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
     .style('gap', '4px')
     .style('overflow-x', 'auto')
 
+  function resolveDroppedWorkflowImage(dragData) {
+    if (!dragData) return ''
+
+    return (
+      dragData.mediaUrl ||
+      dragData.originalUrl ||
+      dragData.fullUrl ||
+      dragData.imageUrl ||
+      dragData.url ||
+      dragData.thumbnailUrl ||
+      dragData.clip?.mediaUrl ||
+      dragData.clip?.originalUrl ||
+      dragData.clip?.fullUrl ||
+      dragData.clip?.imageUrl ||
+      dragData.clip?.url ||
+      dragData.clip?.thumbnailUrl ||
+      ''
+    )
+  }
+
+  function isLikelyImageUrl(url = '') {
+    const lower = String(url).toLowerCase()
+    return (
+      lower.startsWith('data:image/') ||
+      lower.startsWith('blob:') ||
+      lower.includes('.png') ||
+      lower.includes('.jpg') ||
+      lower.includes('.jpeg') ||
+      lower.includes('.webp') ||
+      lower.includes('.gif') ||
+      lower.includes('.bmp') ||
+      lower.includes('.svg')
+    )
+  }
+
+  function isWorkflowBufferImageDrag(dragData, resolvedUrl) {
+    const dragType =
+      dragData?.type ||
+      dragData?.clip?.type ||
+      ''
+
+    if (dragType === 'image') return true
+    if (dragData?.__dragSource === 'buffer' && isLikelyImageUrl(resolvedUrl)) return true
+    return isLikelyImageUrl(resolvedUrl)
+  }
+
+  function dataURLToBlob(dataURL) {
+    const arr = dataURL.split(',')
+    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png'
+    const bstr = atob(arr[1] || '')
+    let n = bstr.length
+    const u8arr = new Uint8Array(n)
+    while (n--) {
+      u8arr[n] = bstr.charCodeAt(n)
+    }
+    return new Blob([u8arr], { type: mime })
+  }
+
   // ========== 新增：预览区域拖拽监听 ==========
   // 1. 允许拖拽进入
   previewRow.on('dragover', (ev) => {
@@ -3105,45 +3163,68 @@ function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
   });
 
   // 3. 拖拽放下：接收Canvas图片并添加到输入列表
-  previewRow.on('drop', (ev) => {
+  previewRow.on('drop', async (ev) => {
     ev.preventDefault();
     ev.stopPropagation();
-    
-    // 恢复样式
+
     previewRow.style.border = '1px dashed #e5e7eb';
     previewRow.style.background = '#f9fafb';
 
-    // 解析拖拽数据
-    const data = ev.dataTransfer.getData('text/plain');
+    const rawJson = ev.dataTransfer.getData('application/json');
+    const rawText = ev.dataTransfer.getData('text/plain');
+    const rawUri = ev.dataTransfer.getData('text/uri-list');
+
     let dragData = null;
+
     try {
-      dragData = JSON.parse(data);
+      dragData = JSON.parse(rawJson || rawText || '{}');
     } catch (err) {
-      dragData = { url: data };
+      dragData = { url: rawText || rawUri || '' };
     }
 
-    // 校验是否是Canvas导出的图片
-    if (!dragData.url || !dragData.url.startsWith('data:image/')) return;
+    const resolvedUrl = resolveDroppedWorkflowImage(dragData);
 
-    // ========== 修改3：拖拽添加后同步更新d.assets（关键） ==========
-    // 避免重复添加
-    if (!previewImages.includes(dragData.url)) {
-      previewImages.push(dragData.url);
-      
-      // 同步更新节点的assets数据（核心！）
-      if (!d.assets) d.assets = {};
-      if (!d.assets.input) d.assets.input = {};
-      d.assets.input.images = previewImages; // 把拖拽的图片同步到d.assets
-      
-      // 触发上传事件（和点击+号上传逻辑一致）
-      const blob = dataURLToBlob(dragData.url);
-      const file = new File([blob], 'canvas-export.png', { type: 'image/png' });
+    if (!resolvedUrl || !isWorkflowBufferImageDrag(dragData, resolvedUrl)) {
+      return;
+    }
+
+    // 初始化 previewImages
+    if (!Array.isArray(previewImages)) {
+      previewImages = (d.assets && d.assets.input && d.assets.input.images)
+        ? [...d.assets.input.images]
+        : [];
+    }
+
+    // 去重
+    if (previewImages.includes(resolvedUrl)) {
+      return;
+    }
+
+    previewImages.push(resolvedUrl);
+
+    // 同步到节点数据
+    if (!d.assets) d.assets = {};
+    if (!d.assets.input) d.assets.input = {};
+    d.assets.input.images = [...previewImages];
+
+    // 立即更新前端预览
+    renderPreview();
+
+    // 如果是 canvas 导出的 dataURL，继续保留原来 upload-media 行为
+    if (resolvedUrl.startsWith('data:image/')) {
+      const blob = dataURLToBlob(resolvedUrl);
+      const file = new File(
+        [blob],
+        dragData.filename || dragData.name || 'buffer-drop.png',
+        { type: blob.type || 'image/png' }
+      );
       emit('upload-media', d.id, [file]);
-      
-      // 重新渲染预览区域
-      renderPreview();
+      return;
     }
-  });
+
+    // 如果是 buffer 中已有的普通 URL，不强制上传，先作为输入引用使用
+    // 这样 workflow 节点能立即显示并参与后续 agent / workflow 逻辑
+  })
 
   // ========== 辅助函数：DataURL转Blob ==========
   function dataURLToBlob(dataURL) {

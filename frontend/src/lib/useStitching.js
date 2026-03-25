@@ -335,9 +335,45 @@ export function useStitching(props, emit) {
   // trackType: 'buffer' | 'video' | 'audio'
   function handleDragStart(trackType, index, e) {
     draggedClip.value = { track: trackType, index }
-    if (e?.dataTransfer) {
-      e.dataTransfer.effectAllowed = 'move'
-      e.dataTransfer.setData('text/plain', String(index))
+
+    if (!e?.dataTransfer) return
+
+    e.dataTransfer.effectAllowed = 'move'
+
+    const info = getListAndEventByTrack(trackType)
+    const rawClip = info?.raw?.[index] || info?.list?.[index] || null
+
+    const payload = {
+      __dragSource: trackType,
+      track: trackType,
+      index,
+      clip: rawClip,
+      type: rawClip?.type || '',
+      mediaUrl: rawClip?.mediaUrl || rawClip?.url || rawClip?.imageUrl || '',
+      imageUrl: rawClip?.imageUrl || rawClip?.mediaUrl || rawClip?.url || '',
+      originalUrl: rawClip?.originalUrl || rawClip?.mediaUrl || '',
+      fullUrl: rawClip?.fullUrl || rawClip?.mediaUrl || '',
+      thumbnailUrl: rawClip?.thumbnailUrl || '',
+      name: rawClip?.name || rawClip?.filename || '',
+      filename: rawClip?.filename || rawClip?.name || '',
+      source: rawClip?.source || trackType,
+    }
+
+    const json = JSON.stringify(payload)
+
+    e.dataTransfer.setData('application/json', json)
+    e.dataTransfer.setData('text/plain', json)
+
+    const uri =
+      payload.mediaUrl ||
+      payload.originalUrl ||
+      payload.fullUrl ||
+      payload.imageUrl ||
+      payload.thumbnailUrl ||
+      ''
+
+    if (uri) {
+      e.dataTransfer.setData('text/uri-list', uri)
     }
   }
 
