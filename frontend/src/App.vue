@@ -3,7 +3,7 @@
     <!-- Top Title Bar -->
     <header class="title-bar">
       <div class="title-main">
-        <h1>T2VTree Visual Analytics System</h1>
+        <h1>ShotWeaver: Branching Video Storyboard Authoring</h1>
       </div>
     </header>
 

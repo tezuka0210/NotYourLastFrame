@@ -5,22 +5,27 @@
       <div class="toolbar-bar">
         <!-- Left tools -->
         <div class="toolbar-group">
+
           <button
             id="tool-select-btn"
-            class="toolbar-btn is-active"
+            :class="['toolbar-btn', { 'is-tool-active': activeTool === 'select' }]"
             title="Select"
             aria-label="Select"
+            :aria-pressed="activeTool === 'select'"
+            @click="setActiveTool('select')"
           >
-            <svg viewBox="0 0 24 24" class="toolbar-icon" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M6 4l10 10-4 1 2 5-2 1-2-5-3 3V4z" />
+            <svg viewBox="0 0 22 22" class="toolbar-icon" fill="currentColor" aria-hidden="true">
+              <path d="M6 3.5C6 3.224 5.776 3 5.5 3S5 3.224 5 3.5v15a.5.5 0 0 0 .854.354l4.2-4.2 2.646 5.027a.5.5 0 0 0 .676.211l1.77-.932a.5.5 0 0 0 .211-.676l-2.646-5.026h5.289a.5.5 0 0 0 .354-.854L6.354 3.146A.5.5 0 0 0 6 3.5Z"/>
             </svg>
           </button>
 
           <button
             id="tool-region-btn"
-            class="toolbar-btn"
+            :class="['toolbar-btn', { 'is-tool-active': activeTool === 'region' }]"
             title="Region"
             aria-label="Region"
+            :aria-pressed="activeTool === 'region'"
+            @click="setActiveTool('region')"
           >
             <svg viewBox="0 0 24 24" class="toolbar-icon" fill="none" stroke="currentColor" stroke-width="1.8">
               <rect x="5" y="5" width="14" height="14" rx="2" />
@@ -30,28 +35,17 @@
 
           <button
             id="tool-paint-btn"
-            class="toolbar-btn"
+            :class="['toolbar-btn', { 'is-tool-active': activeTool === 'paint' }]"
             title="Paint Mask"
             aria-label="Paint Mask"
+            :aria-pressed="activeTool === 'paint'"
+            @click="setActiveTool('paint')"
           >
             <svg viewBox="0 0 24 24" class="toolbar-icon" fill="none" stroke="currentColor" stroke-width="1.8">
               <path d="M4 20c2.5 0 4-1 5-2l8.5-8.5a2.2 2.2 0 0 0-3.1-3.1L5.9 14.9C5 15.8 4 17.5 4 20z" />
               <path d="M13 6l5 5" />
             </svg>
           </button>
-
-          <button
-            id="tool-label-btn"
-            class="toolbar-btn"
-            title="Edit Label"
-            aria-label="Edit Label"
-          >
-            <svg viewBox="0 0 24 24" class="toolbar-icon" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M4 19.5V15l10-10 4.5 4.5-10 10H4z" />
-              <path d="M13 6l4.5 4.5" />
-            </svg>
-          </button>
-
           <button
             id="tool-layer-btn"
             class="toolbar-btn"
@@ -146,12 +140,31 @@
 </template>
 
 <script setup lang="ts">
-
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { initCanvasDrag } from '@/lib/canvasDrag.js'
+
+type ToolMode = 'select' | 'region' | 'paint'
+
+const activeTool = ref<ToolMode>('select')
+
+function setActiveTool(tool: ToolMode) {
+  activeTool.value = tool
+
+  window.dispatchEvent(
+    new CustomEvent('mask-tool-change', {
+      detail: { tool }
+    })
+  )
+}
 
 onMounted(() => {
   initCanvasDrag()
+
+  window.dispatchEvent(
+    new CustomEvent('mask-tool-change', {
+      detail: { tool: activeTool.value }
+    })
+  )
 })
 </script>
 
@@ -192,20 +205,23 @@ onMounted(() => {
 .toolbar-group {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   min-width: 0;
 }
 
 .toolbar-btn {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
-  border: 1px solid transparent;
-  background: transparent;
+  border: 1px solid #d1d5db;
+  background: rgba(255, 255, 255, 0.96);
   color: #6b7280;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.04),
+    0 2px 8px rgba(15, 23, 42, 0.08);
   transition:
     background-color 0.18s ease,
     border-color 0.18s ease,
@@ -216,41 +232,51 @@ onMounted(() => {
 
 .toolbar-btn:hover {
   background: #ffffff;
-  border-color: #d1d5db;
+  border-color: #cbd5e1;
   color: #374151;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.05),
+    0 3px 10px rgba(15, 23, 42, 0.1);
 }
 
 .toolbar-btn:active {
   transform: translateY(0.5px);
 }
 
-.toolbar-btn.is-active {
-  background: #ffffff;
-  border-color: #d9dee7;
-  color: #111827;
+.toolbar-btn.is-tool-active {
+  background: #111827;
+  border-color: #111827;
+  color: #ffffff;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.96),
-    0 1px 3px rgba(15, 23, 42, 0.08);
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 3px 10px rgba(15, 23, 42, 0.18);
+}
+
+.toolbar-btn.is-tool-active:hover {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #ffffff;
 }
 
 .toolbar-btn--danger:hover {
   background: #fff7f7;
   border-color: #fecaca;
   color: #dc2626;
-}
-
-.toolbar-divider {
-  width: 1px;
-  height: 18px;
-  background: #e5e7eb;
-  margin: 0 6px;
+  box-shadow:
+    0 0 0 1px rgba(220, 38, 38, 0.05),
+    0 3px 10px rgba(220, 38, 38, 0.08);
 }
 
 .toolbar-icon {
   width: 15px;
   height: 15px;
+  flex: 0 0 15px;
   vector-effect: non-scaling-stroke;
+}
+
+.toolbar-icon--cursor {
+  width: 14px;
+  height: 14px;
 }
 
 /* ===== Main board ===== */
