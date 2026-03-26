@@ -1,10 +1,44 @@
 <template>
   <div
     id="chart-wrapper"
-    class="bg-white rounded shadow p-3 flex-1 min-h-0"
-    style="position: relative;"
+    class="bg-white rounded shadow p-3 flex-1 min-h-0 workflow-tree-shell"
   >
     <svg ref="svgContainer" class="w-full h-full"></svg>
+
+    <div v-if="showToolbar" class="workflow-toolbar" >
+      <div class="toolbar-status" :class="{ active: boxSelectMode }">
+        {{ toolbarStatusText }}
+      </div>
+      <div class="toolbar-actions">
+        <button 
+          class="toolbar-btn toolbar-btn-primary" 
+          :disabled="!canMerge" 
+          @click.stop="mergeSelectedNodes(localSelectedIds)"
+        >
+          Merge
+        </button>
+        <button 
+          v-if="localSelectedIds.length > 0" 
+          class="toolbar-btn" 
+          @click.stop="clearSelection"
+        >
+          Clear
+        </button>
+        <button 
+          class="toolbar-btn" 
+          @click.stop="startBoxSelectMode"
+        >
+          {{ localSelectedIds.length > 0 ? 'Reselect' : 'Box Select' }}
+        </button>
+        <button 
+          v-if="boxSelectMode" 
+          class="toolbar-btn" 
+          @click.stop="stopBoxSelectMode"
+        >
+          Done
+        </button>
+      </div>
+    </div>
 
     <div
       v-if="selecting"
@@ -16,99 +50,6 @@
         height: selectBox.height + 'px'
       }"
     ></div>
-
-    <div
-      v-if="boxSelectMode"
-      style="
-        position:absolute;
-        top:12px;
-        left:12px;
-        z-index:20;
-        padding:8px 12px;
-        border-radius:10px;
-        background:rgba(255,255,255,0.96);
-        border:1px solid #bfdbfe;
-        box-shadow:0 8px 24px rgba(15,23,42,0.08);
-        font-size:12px;
-        color:#1d4ed8;
-        font-weight:600;
-      "
-    >
-      Box Select Mode · Drag on empty canvas to select · Press B or Esc to exit
-    </div>
-
-    <div
-      v-if="selectedIdsForHint.length >= 1"
-      style="
-        position:absolute;
-        top:12px;
-        right:12px;
-        z-index:20;
-        display:flex;
-        align-items:center;
-        gap:8px;
-        padding:8px 12px;
-        border-radius:12px;
-        background:rgba(255,255,255,0.98);
-        border:1px solid #ddd6fe;
-        box-shadow:0 8px 24px rgba(15,23,42,0.08);
-        font-size:12px;
-        color:#5b21b6;
-        font-weight:600;
-      "
-    >
-      <span>Selected {{ selectedIdsForHint.length }} nodes</span>
-
-      <button
-        @click.stop="mergeSelectedNodes(selectedIdsForHint)"
-        :disabled="selectedIdsForHint.length < 2"
-        :style="{
-          border: 'none',
-          background: selectedIdsForHint.length < 2 ? '#c4b5fd' : '#8b5cf6',
-          color: 'white',
-          padding: '6px 12px',
-          borderRadius: '999px',
-          fontSize: '12px',
-          fontWeight: '700',
-          cursor: selectedIdsForHint.length < 2 ? 'not-allowed' : 'pointer',
-          opacity: selectedIdsForHint.length < 2 ? '0.7' : '1'
-        }"
-      >
-        Merge
-      </button>
-
-      <button
-        @click.stop="commitSelectedIds([])"
-        style="
-          border:1px solid #e5e7eb;
-          background:white;
-          color:#475569;
-          padding:6px 12px;
-          border-radius:999px;
-          font-size:12px;
-          font-weight:600;
-          cursor:pointer;
-        "
-      >
-        Clear
-      </button>
-
-      <button
-        @click.stop="boxSelectMode = true"
-        style="
-          border:1px solid #bfdbfe;
-          background:#eff6ff;
-          color:#1d4ed8;
-          padding:6px 12px;
-          border-radius:999px;
-          font-size:12px;
-          font-weight:600;
-          cursor:pointer;
-        "
-      >
-        Box Select Again
-      </button>
-    </div>
   </div>
 </template>
 
@@ -165,13 +106,36 @@ const layoutConfig = ref({
 const localGroups = ref([])
 const renderedNodes = ref([])
 const localSelectedIds = ref([...(props.selectedIds || [])])
+
 const ignoreBackgroundClearUntil = ref(0)
 
 function markIgnoreBackgroundClear(ms = 250) {
   ignoreBackgroundClearUntil.value = Date.now() + ms
 }
 
-const selectedIdsForHint = computed(() => localSelectedIds.value || [])
+const canMerge = computed(() => localSelectedIds.value.length >= 2)
+
+const showToolbar = computed(() => {
+  return boxSelectMode.value || localSelectedIds.value.length > 0
+})
+
+const toolbarStatusText = computed(() => {
+  const count = localSelectedIds.value.length
+
+  if (boxSelectMode.value && count > 0) {
+    return `Box Select Mode · ${count} node${count > 1 ? 's' : ''} selected`
+  }
+
+  if (boxSelectMode.value) {
+    return 'Box Select Mode · Drag on empty canvas to select'
+  }
+
+  if (count > 0) {
+    return `Selected ${count} node${count > 1 ? 's' : ''}`
+  }
+
+  return ''
+})
 
 function sameIds(a = [], b = []) {
   if (a.length !== b.length) return false
@@ -224,6 +188,21 @@ function commitSelectedIds(ids = []) {
   if (!sameIds(props.selectedIds || [], nextIds)) {
     emit('update:selectedIds', nextIds)
   }
+}
+
+function clearSelection() {
+  commitSelectedIds([])
+  stopBoxSelectMode()
+}
+
+function startBoxSelectMode() {
+  boxSelectMode.value = true
+  resetSelectionBox()
+}
+
+function stopBoxSelectMode() {
+  boxSelectMode.value = false
+  resetSelectionBox()
 }
 
 function resetSelectionBox() {
@@ -414,10 +393,11 @@ function handleKeyDown(e) {
 
   if (e.key === 'b' || e.key === 'B') {
     e.preventDefault()
-    boxSelectMode.value = !boxSelectMode.value
 
-    if (!boxSelectMode.value) {
-      resetSelectionBox()
+    if (boxSelectMode.value) {
+      stopBoxSelectMode()
+    } else {
+      startBoxSelectMode()
     }
     return
   }
@@ -430,9 +410,7 @@ function handleKeyDown(e) {
 
   if (e.key === 'Escape') {
     e.preventDefault()
-    boxSelectMode.value = false
-    resetSelectionBox()
-    commitSelectedIds([])
+    clearSelection()
   }
 }
 
@@ -514,7 +492,6 @@ function handleMouseUp(e) {
   if (!hadRealDrag) return
 
   if (selectedNodeIds.length > 0) {
-    // 忽略接下来那次背景 click 触发的清空
     markIgnoreBackgroundClear()
     commitSelectedIds(selectedNodeIds)
   } else {
@@ -574,7 +551,7 @@ function mergeSelectedNodes(selectedNodeIds) {
     created_at: new Date().toISOString()
   })
 
-  boxSelectMode.value = false
+  stopBoxSelectMode()
   commitSelectedIds([groupId])
   syncRenderedTree([groupId])
 }
@@ -599,8 +576,6 @@ const graphEmit = (event, ...args) => {
   if (event === 'update:selectedIds') {
     const nextIds = Array.isArray(args[0]) ? args[0] : []
 
-    // 框选刚结束时，workflowGraph.js 背景 click 会马上发一个 []
-    // 这里把它吃掉，避免把刚选中的节点瞬间清空
     if (
       nextIds.length === 0 &&
       Date.now() < ignoreBackgroundClearUntil.value
@@ -696,10 +671,109 @@ watch(
 </script>
 
 <style scoped>
+.workflow-toolbar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 40px);
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #d4d4d8;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(6px);
+  flex-wrap: wrap;
+}
+
+.toolbar-status {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: #f5f5f5;
+  border: 1px solid #e4e4e7;
+  color: #3f3f46;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.toolbar-status.active {
+  background: #f5f5f5;
+  border-color: #d4d4d8;
+  color: #27272a;
+}
+
+.toolbar-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.toolbar-btn {
+  border: 1px solid #d4d4d8;
+  background: #ffffff;
+  color: #3f3f46;
+  padding: 6px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.toolbar-btn:hover:not(:disabled) {
+  background: #f5f5f5;
+  border-color: #a1a1aa;
+  color: #18181b;
+}
+
+.toolbar-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.toolbar-btn-primary {
+  background: #3f3f46;
+  border-color: #3f3f46;
+  color: #ffffff;
+}
+
+.toolbar-btn-primary:hover:not(:disabled) {
+  background: #27272a;
+  border-color: #27272a;
+}
+
+/* 响应式适配 */
+@media (max-width: 900px) {
+  .workflow-toolbar {
+    top: 10px;
+    gap: 6px;
+    padding: 6px;
+  }
+  .toolbar-status {
+    width: 100%;
+  }
+  .toolbar-actions {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
 .selection-box {
   position: fixed;
-  border: 1px solid #409eff;
-  background-color: rgba(64, 158, 255, 0.1);
+  border: 1px solid rgba(63, 63, 70, 0.75);
+  background: rgba(63, 63, 70, 0.12);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
   pointer-events: none;
   z-index: 9999;
 }
