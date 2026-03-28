@@ -1,38 +1,38 @@
 <template>
   <div
     id="chart-wrapper"
-    class="bg-white rounded shadow p-3 flex-1 min-h-0 workflow-tree-shell"
+    class="flex-1 min-h-0 workflow-tree-shell"
   >
     <svg ref="svgContainer" class="w-full h-full"></svg>
 
-    <div v-if="showToolbar" class="workflow-toolbar" >
+    <div v-if="showToolbar" class="workflow-toolbar">
       <div class="toolbar-status" :class="{ active: boxSelectMode }">
         {{ toolbarStatusText }}
       </div>
       <div class="toolbar-actions">
-        <button 
-          class="toolbar-btn toolbar-btn-primary" 
-          :disabled="!canMerge" 
+        <button
+          class="toolbar-btn toolbar-btn-primary"
+          :disabled="!canMerge"
           @click.stop="mergeSelectedNodes(localSelectedIds)"
         >
-          Merge
+          Create Overlap
         </button>
-        <button 
-          v-if="localSelectedIds.length > 0" 
-          class="toolbar-btn" 
+        <button
+          v-if="localSelectedIds.length > 0"
+          class="toolbar-btn"
           @click.stop="clearSelection"
         >
           Clear
         </button>
-        <button 
-          class="toolbar-btn" 
+        <button
+          class="toolbar-btn"
           @click.stop="startBoxSelectMode"
         >
           {{ localSelectedIds.length > 0 ? 'Reselect' : 'Box Select' }}
         </button>
-        <button 
-          v-if="boxSelectMode" 
-          class="toolbar-btn" 
+        <button
+          v-if="boxSelectMode"
+          class="toolbar-btn"
           @click.stop="stopBoxSelectMode"
         >
           Done
@@ -94,8 +94,8 @@ const selectStart = ref({ x: 0, y: 0 })
 const BOX_DRAG_THRESHOLD = 6
 
 const layoutConfig = ref({
-  horizontalGap: 100,
-  verticalGap: 120,
+  horizontalGap: 112,
+  verticalGap: 124,
   colors: {
     image: null,
     video: null,
@@ -123,15 +123,15 @@ const toolbarStatusText = computed(() => {
   const count = localSelectedIds.value.length
 
   if (boxSelectMode.value && count > 0) {
-    return `Box Select Mode · ${count} node${count > 1 ? 's' : ''} selected`
+    return `Area selection · ${count} state${count > 1 ? 's' : ''}`
   }
 
   if (boxSelectMode.value) {
-    return 'Box Select Mode · Drag on empty canvas to select'
+    return 'Area selection · drag on empty space'
   }
 
   if (count > 0) {
-    return `Selected ${count} node${count > 1 ? 's' : ''}`
+    return `${count} state${count > 1 ? 's' : ''} selected`
   }
 
   return ''
@@ -329,7 +329,7 @@ function buildCompositeNode(group, groupedNodes, allNodes) {
     sourceNodeIds: [...group.nodeIds],
     combinedNodes: groupedNodes.map(cloneNode),
     childrenIds: downstreamIds,
-    label: `Group · ${groupedNodes.length}`,
+    label: `Overlap · ${groupedNodes.length}`,
     summary,
     assets: mergeNodeAssets(groupedNodes.map(n => n.assets || {})),
     linkColor: '#8b5cf6',
@@ -414,9 +414,7 @@ function handleKeyDown(e) {
   }
 }
 
-function handleKeyUp() {
-  // no-op
-}
+function handleKeyUp() {}
 
 function handleSvgMouseDown(e) {
   if (!boxSelectMode.value || e.button !== 0) return
@@ -539,7 +537,7 @@ function mergeSelectedNodes(selectedNodeIds) {
 
   const parentKeys = new Set(validNodes.map(parentSignature))
   if (parentKeys.size > 1) {
-    alert('Current limitation: merging is restricted to nodes that share the same parent node.')
+    alert('Current limitation: overlap is restricted to states that share the same parent state.')
     return
   }
 
@@ -670,120 +668,124 @@ watch(
 )
 </script>
 
+
 <style scoped>
+.workflow-tree-shell {
+  position: relative;
+  min-height: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: hidden;
+}
+
 .workflow-toolbar {
   position: absolute;
-  top: 14px;
+  top: 10px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 30;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  max-width: calc(100% - 40px);
-  padding: 6px 8px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid #d4d4d8;
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  gap: 6px;
+  max-width: calc(100% - 24px);
+  padding: 4px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: none;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(6px);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 
 .toolbar-status {
   flex: 0 1 auto;
   min-width: 0;
-  padding: 6px 10px;
-  border-radius: 10px;
-  background: #f5f5f5;
-  border: 1px solid #e4e4e7;
-  color: #3f3f46;
-  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f3f4f6;
+  border: none;
+  color: #4b5563;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
   line-height: 1.2;
 }
 
 .toolbar-status.active {
-  background: #f5f5f5;
-  border-color: #d4d4d8;
-  color: #27272a;
+  background: rgba(59, 130, 246, 0.10);
+  color: #1d4ed8;
 }
 
 .toolbar-actions {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: nowrap;
 }
 
 .toolbar-btn {
-  border: 1px solid #d4d4d8;
-  background: #ffffff;
-  color: #3f3f46;
-  padding: 6px 10px;
-  border-radius: 10px;
-  font-size: 12px;
+  border: none;
+  background: transparent;
+  color: #374151;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
-  transition: all 0.16s ease;
+  transition: background 0.16s ease, color 0.16s ease, opacity 0.16s ease;
 }
 
 .toolbar-btn:hover:not(:disabled) {
-  background: #f5f5f5;
-  border-color: #a1a1aa;
-  color: #18181b;
+  background: #f3f4f6;
+  color: #111827;
 }
 
 .toolbar-btn:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: 0.4;
 }
 
 .toolbar-btn-primary {
-  background: #3f3f46;
-  border-color: #3f3f46;
+  background: #1f2937;
   color: #ffffff;
 }
 
 .toolbar-btn-primary:hover:not(:disabled) {
-  background: #27272a;
-  border-color: #27272a;
-}
-
-/* 响应式适配 */
-@media (max-width: 900px) {
-  .workflow-toolbar {
-    top: 10px;
-    gap: 6px;
-    padding: 6px;
-  }
-  .toolbar-status {
-    width: 100%;
-  }
-  .toolbar-actions {
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
+  background: #111827;
+  color: #ffffff;
 }
 
 .selection-box {
   position: fixed;
-  border: 1px solid rgba(63, 63, 70, 0.75);
-  background: rgba(63, 63, 70, 0.12);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.65);
+  background: rgba(59, 130, 246, 0.10);
   pointer-events: none;
   z-index: 9999;
+  border-radius: 6px;
 }
 
 svg {
   cursor: default;
 }
 
-svg:active:has(.selection-box),
-svg:hover:has(.selection-box) {
-  cursor: crosshair;
+@media (max-width: 900px) {
+  .workflow-toolbar {
+    top: 8px;
+    max-width: calc(100% - 16px);
+    padding: 4px 5px;
+    gap: 4px;
+  }
+
+  .toolbar-status {
+    display: none;
+  }
+
+  .toolbar-btn {
+    padding: 5px 7px;
+    font-size: 10px;
+  }
 }
 </style>

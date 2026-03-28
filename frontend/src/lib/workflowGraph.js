@@ -142,14 +142,27 @@ function getSelectionColor(node) {
 }
 
 function getNodeHeaderBaseLabel(node) {
-  if (node.isComposite) return node.label || `Group (${node.combinedNodes?.length || 0})`
+  if (node.isComposite) return node.label || `Overlap State (${node.combinedNodes?.length || 0})`
 
   const mid = (node.module_id || '').toLowerCase()
 
-  if (mid === 'addtext') return 'Intent Draft'
-  if (mid === 'addworkflow') return 'Workflow Planning'
+  if (mid === 'addtext') return 'Note'
+  if (mid === 'addworkflow') return 'Plan'
 
-  return node.module_id || '(Node)'
+  return node.module_id || 'State'
+}
+
+function getNodeMetaTag(node) {
+  if (node.isComposite) return 'overlap state'
+  const mid = (node.module_id || '').toLowerCase()
+  if (mid === 'init') return 'root state'
+  if (mid === 'addtext') return 'draft note'
+  if (mid === 'addworkflow') return 'plan state'
+  const cat = getNodeCategory(node)
+  if (cat === 'image') return 'image draft'
+  if (cat === 'video') return 'video draft'
+  if (cat === 'audio') return 'audio draft'
+  return 'draft state'
 }
 
 /** 统一控制卡片选中样式 */
@@ -351,11 +364,11 @@ function addRightClickMenu(card, d, emit) {
         })
     }
 
-    addMenuItem('Add Intent Draft', () => {
+    addMenuItem('Create Child Draft', () => {
       emit('create-card', d, 'AddText', 'util')
     })
 
-    addMenuItem('Add Workflow Planning', () => {
+    addMenuItem('Add Re-authoring Plan', () => {
       emit('create-card', d, 'AddWorkflow', 'util')
     })
 
@@ -538,7 +551,7 @@ export function renderTree(
       .attr('x', '50%').attr('y', '50%')
       .attr('text-anchor', 'middle')
       .attr('fill', '#ffffffff')//#9ca3af
-      .text('No workflow yet. Generate nodes to start.')
+      .text('No draft states yet. Create a child draft to begin.')
     return
   }
 
@@ -775,41 +788,38 @@ export function renderTree(
    */
   function buildHeader(card, d) {
     let isEditingTitle = false
-    
+
     const header = card.append('xhtml:div')
       .style('display', 'flex')
       .style('justify-content', 'space-between')
       .style('align-items', 'center')
-      .style('padding', '2px 6px')
+      .style('padding', '4px 8px')
       .style('border-bottom', '1px solid #e5e7eb')
       .style('flex-shrink', '0')
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
 
-    // ★ 头部背景颜色，保持不变
     const cat = getNodeCategory(d)
-    let headerBg = '#F9FAFB' // 默认灰
-
-    if (cat === 'image') {
-      headerBg = NODE_COLORS.imageSoft
-    } else if (cat === 'video') {
-      headerBg = NODE_COLORS.videoSoft
-    } else if (cat === 'audio') {
-      headerBg = NODE_COLORS.audioSoft
-    } else if (cat === 'composite') { // 新增：复合节点头部背景
-      headerBg = 'rgba(139, 92, 246, 0.1)'; // 紫色浅背景
-    }
-
+    let headerBg = '#f9fafb'
+    if (cat === 'image') headerBg = NODE_COLORS.imageSoft
+    else if (cat === 'video') headerBg = NODE_COLORS.videoSoft
+    else if (cat === 'audio') headerBg = NODE_COLORS.audioSoft
+    else if (cat === 'composite') headerBg = 'rgba(139, 92, 246, 0.10)'
 
     header
       .style('background-color', headerBg)
       .attr('data-node-category', cat)
 
-    // ★ 初始标题：优先用 displayName，其次用 getNodeHeaderBaseLabel
-    const initialLabel = d.displayName || getNodeHeaderBaseLabel(d)
+    const titleWrap = header.append('xhtml:div')
+      .style('display', 'flex')
+      .style('align-items', 'center')
+      .style('min-width', '0')
+      .style('flex', '1 1 auto')
 
-    const title = header.append('xhtml:div')
-      .style('font-size', '10px')
+    const initialLabel = getNodeHeaderBaseLabel(d)
+
+    const title = titleWrap.append('xhtml:div')
+      .style('font-size', '12px')
       .style('font-weight', '600')
       .style('color', '#111827')
       .style('overflow', 'hidden')
@@ -819,25 +829,21 @@ export function renderTree(
       .style('cursor', 'text')
       .text(initialLabel)
 
-    // ★ 双击标题进入编辑模式（保留你之前的 rename 行为）
     title.on('dblclick', (ev) => {
       ev.stopPropagation()
       if (isEditingTitle) return
       isEditingTitle = true
-
-      const currentLabel = d.displayName || getNodeHeaderBaseLabel(d)
-
-      // 清空原文字，改成一个 input
+      const currentLabel = getNodeHeaderBaseLabel(d)
       title.text(null)
         .style('border', '1px dashed #9ca3af')
         .style('border-radius', '4px')
-        .style('padding', '1px 3px')
+        .style('padding', '1px 4px')
 
       const input = title.append('xhtml:input')
         .attr('type', 'text')
         .attr('value', currentLabel)
         .style('width', '100%')
-        .style('font-size', '10px')
+        .style('font-size', '12px')
         .style('font-weight', '600')
         .style('color', '#111827')
         .style('border', 'none')
@@ -856,30 +862,19 @@ export function renderTree(
       function finishEdit(commit) {
         if (!isEditingTitle) return
         isEditingTitle = false
-
-        const baseLabel = getNodeHeaderBaseLabel(d)
-        const newText = commit && inputNode
-          ? inputNode.value.trim()
-          : (d.displayName || baseLabel)
-
-        const finalLabel = newText || baseLabel
-        d.displayName = finalLabel   // 记录在节点对象里
-
-        // 还原标题展示
+        const fallback = getNodeHeaderBaseLabel({ ...d, displayName: '' })
+        const newText = commit && inputNode ? inputNode.value.trim() : (d.displayName || fallback)
+        const finalLabel = newText || fallback
+        d.displayName = finalLabel
         title.selectAll('*').remove()
-        title
-          .style('border', 'none')
-          .style('padding', '0')
-          .text(finalLabel)
+        title.style('border', 'none').style('padding', '0').text(finalLabel)
       }
 
-      // 回车确认
       d3.select(inputNode).on('keydown', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault()
           e.stopPropagation()
           finishEdit(true)
-          // 通知外部更新（父组件可以监听 'rename-node' 来改 nodes）
           emit('rename-node', { id: d.id, label: d.displayName })
         } else if (e.key === 'Escape') {
           e.preventDefault()
@@ -888,7 +883,6 @@ export function renderTree(
         }
       })
 
-      // 失焦也视作确认
       d3.select(inputNode).on('blur', () => {
         finishEdit(true)
         emit('rename-node', { id: d.id, label: d.displayName })
@@ -899,8 +893,9 @@ export function renderTree(
       .style('display', 'flex')
       .style('gap', '4px')
       .style('align-items', 'center')
+      .style('margin-left', '8px')
+      .style('flex-shrink', '0')
 
-    // 是否有子节点（决定要不要显示折叠按钮）
     const tempMap = new Map(allNodesData.map(n => [n.id, { ...n, children: [] }]))
     allNodesData.forEach(n => {
       if (n.originalParents) {
@@ -909,7 +904,6 @@ export function renderTree(
     })
     const hasChildren = !!(tempMap.get(d.id) && tempMap.get(d.id).children.length)
 
-    // 折叠（- / +）——和其他节点完全一致
     if (hasChildren) {
       const collapseBtn = toolbar.append('xhtml:button')
         .attr('class', 'collapse-btn')
@@ -927,46 +921,37 @@ export function renderTree(
         .style('user-select', 'none')
         .on('mousedown', ev => ev.stopPropagation())
         .on('click', ev => {
-          ev.stopPropagation();
-
-          // ✅ 乐观更新：立即反映到按钮 UI，避免 hover 覆盖和异步闪烁
-          const nextCollapsed = !d._collapsed;
-          d._collapsed = nextCollapsed; // 关键：让 mouseleave/hover 读取到新状态
-
-          collapseBtn.text(nextCollapsed ? '+' : '-');
-          applyCollapseBtnStyle(collapseBtn, nextCollapsed);
-
-          emit('toggle-collapse', d.id);
+          ev.stopPropagation()
+          const nextCollapsed = !d._collapsed
+          d._collapsed = nextCollapsed
+          collapseBtn.text(nextCollapsed ? '+' : '-')
+          applyCollapseBtnStyle(collapseBtn, nextCollapsed)
+          emit('toggle-collapse', d.id)
         })
 
-        applyCollapseBtnStyle(collapseBtn, !!d._collapsed)
-
-        collapseBtn
+      applyCollapseBtnStyle(collapseBtn, !!d._collapsed)
+      collapseBtn
         .on('mouseenter', function () {
-          applyCollapseBtnHoverStyle(d3.select(this), !!d._collapsed);
+          applyCollapseBtnHoverStyle(d3.select(this), !!d._collapsed)
         })
         .on('mouseleave', function () {
-          // ✅ 永远回到“真实状态样式”
-          applyCollapseBtnStyle(d3.select(this), !!d._collapsed);
+          applyCollapseBtnStyle(d3.select(this), !!d._collapsed)
         })
-
     }
 
-
-    // 删除（关闭），同样保持一致
-    const deleteHeaderBtn = toolbar.append('xhtml:button')
+    toolbar.append('xhtml:button')
       .text('×')
       .style('width', '18px')
       .style('height', '18px')
       .style('border-radius', '999px')
-      .style('border', '1px solid #fecaca')   // red-200
+      .style('border', '1px solid #fecaca')
       .style('background', '#ffffff')
       .style('font-size', '12px')
       .style('line-height', '1')
       .style('display', 'inline-flex')
       .style('align-items', 'center')
       .style('justify-content', 'center')
-      .style('color', '#dc2626')              // red-600
+      .style('color', '#dc2626')
       .style('cursor', 'pointer')
       .style('user-select', 'none')
       .on('mousedown', ev => ev.stopPropagation())
@@ -975,19 +960,424 @@ export function renderTree(
         emit('delete-node', d.id)
       })
       .on('mouseenter', function () {
-        d3.select(this)
-          .style('background', '#dc2626')
-          .style('color', '#ffffff')
-          .style('border-color', '#dc2626')
+        d3.select(this).style('background', '#dc2626').style('color', '#ffffff').style('border-color', '#dc2626')
       })
       .on('mouseleave', function () {
-        d3.select(this)
-          .style('background', '#ffffff')
-          .style('color', '#dc2626')
-          .style('border-color', '#fecaca')
+        d3.select(this).style('background', '#ffffff').style('color', '#dc2626').style('border-color', '#fecaca')
       })
 
     return header
+  }
+
+
+
+  function buildCollapsibleSection(parent, title, expanded = true, controlsBuilder = null) {
+    let isExpanded = !!expanded
+    const section = parent.append('xhtml:div')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+      .style('gap', '4px')
+      .style('padding', '2px 0')
+
+    const header = section.append('xhtml:div')
+      .style('display', 'flex')
+      .style('align-items', 'center')
+      .style('gap', '6px')
+      .style('padding', '0 2px')
+      .style('cursor', 'pointer')
+      .on('mousedown', ev => ev.stopPropagation())
+
+    const toggle = header.append('xhtml:span')
+      .style('font-size', '10px')
+      .style('color', '#6b7280')
+      .text(isExpanded ? '▾' : '▸')
+
+    header.append('xhtml:span')
+      .style('font-size', '10px')
+      .style('font-weight', '600')
+      .style('color', '#4b5563')
+      .text(title)
+
+    const controls = header.append('xhtml:div')
+      .style('margin-left', 'auto')
+      .style('display', 'flex')
+      .style('align-items', 'center')
+      .style('gap', '4px')
+      .on('click', ev => ev.stopPropagation())
+      .on('mousedown', ev => ev.stopPropagation())
+
+    if (controlsBuilder) controlsBuilder(controls)
+
+    section.append('xhtml:div').style('height', '1px').style('background', '#e5e7eb')
+
+    const content = section.append('xhtml:div')
+      .style('display', isExpanded ? 'block' : 'none')
+      .style('padding', '2px 0 0 0')
+
+    header.on('click', () => {
+      isExpanded = !isExpanded
+      toggle.text(isExpanded ? '▾' : '▸')
+      content.style('display', isExpanded ? 'block' : 'none')
+    })
+
+    return { section, header, content, controls }
+  }
+
+  function getWorkflowOptionIds(currentId = '') {
+    const keys = Object.keys(workflowParameters || {})
+    if (currentId && !keys.includes(currentId)) return [currentId, ...keys]
+    return keys
+  }
+
+  function getDefaultWorkflowParams(workflowId) {
+    const defs = workflowParameters?.[workflowId] || []
+    return defs.reduce((acc, item) => { acc[item.id] = item.defaultValue; return acc }, {})
+  }
+
+  function isVideoUrl(url = '') {
+    const v = String(url).toLowerCase()
+    return v.includes('.mp4') || v.includes('.mov') || v.includes('.webm') || v.includes('subfolder=video')
+  }
+
+  function isAudioUrl(url = '') {
+    const v = String(url).toLowerCase()
+    return v.includes('.mp3') || v.includes('.wav') || v.includes('.m4a') || v.includes('subfolder=audio')
+  }
+
+  function deriveMediaKind(url = '') {
+    if (isAudioUrl(url)) return 'audio'
+    if (isVideoUrl(url)) return 'video'
+    return 'image'
+  }
+
+  function getInputMediaUrls(node) {
+    const a = node.assets?.input || {}
+    return [...(a.images || []), ...(a.videos || []), ...(a.audio || [])].filter(Boolean)
+  }
+
+  function getOutputMediaUrls(node) {
+    const a = node.assets?.output || {}
+    return [...(a.images || []), ...(a.videos || []), ...(a.audio || [])].filter(Boolean)
+  }
+
+  function extractPromptState(node) {
+    const p = node.parameters || {}
+    return {
+      note: p.text || p.prompt_note || p.global_context || '',
+      positive: p.positive_prompt || '',
+      negative: p.negative_prompt || ''
+    }
+  }
+
+  function syncPromptState(node, next, emit) {
+    if (!node.parameters) node.parameters = {}
+    node.parameters.text = next.note || ''
+    node.parameters.prompt_note = next.note || ''
+    node.parameters.positive_prompt = next.positive || ''
+    node.parameters.negative_prompt = next.negative || ''
+    emit('update-node-parameters', node.id, node.parameters)
+  }
+
+  function createHiddenUploader(parent, node, emit, onLocalUrls) {
+    const input = parent.append('xhtml:input')
+      .attr('type', 'file')
+      .attr('accept', 'image/*,video/*,audio/*')
+      .attr('multiple', true)
+      .style('display', 'none')
+      .on('change', function () {
+        const files = Array.from(this.files || [])
+        if (!files.length) return
+        const localUrls = files.map(file => URL.createObjectURL(file))
+        onLocalUrls(localUrls)
+        emit('upload-media', node.id, files)
+        this.value = ''
+      })
+    return input
+  }
+
+  function buildTinyButton(parent, text, title, onClick) {
+    return parent.append('xhtml:button')
+      .text(text)
+      .attr('title', title || '')
+      .style('height', '18px')
+      .style('min-width', '18px')
+      .style('padding', '0 6px')
+      .style('border-radius', '999px')
+      .style('border', '1px solid #d1d5db')
+      .style('background', '#ffffff')
+      .style('color', '#4b5563')
+      .style('font-size', '10px')
+      .style('line-height', '1')
+      .style('cursor', 'pointer')
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('click', function (ev) { ev.stopPropagation(); if (onClick) onClick(ev) })
+  }
+
+  function renderThumbRow(parent, urls, options = {}) {
+    const { emptyText = 'No media yet', onThumbClick = null, onStageClick = null, makeDroppable = false, onDropMedia = null } = options
+    const row = parent.append('xhtml:div')
+      .style('display', 'flex')
+      .style('gap', '6px')
+      .style('overflow-x', 'auto')
+      .style('padding', '2px 0')
+      .style('min-height', '56px')
+
+    if (makeDroppable) {
+      row.style('border', '1px dashed #e5e7eb')
+        .style('border-radius', '8px')
+        .style('padding', '6px')
+        .on('dragover', ev => { ev.preventDefault(); ev.stopPropagation(); row.style('border-color', '#94a3b8').style('background', '#f8fafc') })
+        .on('dragleave', ev => { ev.preventDefault(); ev.stopPropagation(); row.style('border-color', '#e5e7eb').style('background', 'transparent') })
+        .on('drop', ev => {
+          ev.preventDefault(); ev.stopPropagation();
+          row.style('border-color', '#e5e7eb').style('background', 'transparent')
+          if (!onDropMedia) return
+          const rawJson = ev.dataTransfer.getData('application/json')
+          const rawText = ev.dataTransfer.getData('text/plain')
+          let dragData = null
+          try { dragData = JSON.parse(rawJson || rawText || '{}') } catch (e) { dragData = { url: rawText || '' } }
+          const resolvedUrl = dragData?.mediaUrl || dragData?.originalUrl || dragData?.fullUrl || dragData?.imageUrl || dragData?.url || dragData?.thumbnailUrl || dragData?.clip?.mediaUrl || dragData?.clip?.originalUrl || dragData?.clip?.fullUrl || dragData?.clip?.imageUrl || dragData?.clip?.url || dragData?.clip?.thumbnailUrl || ''
+          if (resolvedUrl) onDropMedia(resolvedUrl, dragData)
+        })
+    }
+
+    if (!urls.length) {
+      row.append('xhtml:div').style('font-size', '10px').style('color', '#9ca3af').style('display', 'flex').style('align-items', 'center').text(emptyText)
+      return row
+    }
+
+    urls.forEach(url => {
+      const type = deriveMediaKind(url)
+      const wrap = row.append('xhtml:div')
+        .style('position', 'relative')
+        .style('flex', '0 0 auto')
+        .style('width', '56px')
+        .style('height', '56px')
+        .style('border-radius', '8px')
+        .style('overflow', 'hidden')
+        .style('border', '1px solid #e5e7eb')
+        .style('background', '#f9fafb')
+        .style('cursor', 'pointer')
+        .on('mousedown', ev => ev.stopPropagation())
+        .on('click', ev => { ev.stopPropagation(); if (onThumbClick) onThumbClick(url, type) })
+
+      if (type === 'image') {
+        wrap.append('xhtml:img').attr('src', url).style('width', '100%').style('height', '100%').style('object-fit', 'cover').style('display', 'block')
+      } else if (type === 'video') {
+        wrap.append('xhtml:video').attr('src', url).attr('autoplay', true).attr('muted', true).attr('loop', true).attr('playsinline', true).style('width', '100%').style('height', '100%').style('object-fit', 'cover').style('display', 'block')
+      } else {
+        wrap.append('xhtml:div').style('width', '100%').style('height', '100%').style('display', 'flex').style('align-items', 'center').style('justify-content', 'center').style('font-size', '18px').style('color', '#64748b').text('♪')
+      }
+
+      if (onStageClick) {
+        buildTinyButton(wrap, '↗', 'Add to staging', () => onStageClick(url, type))
+          .style('position', 'absolute').style('top', '4px').style('right', '4px').style('background', 'rgba(255,255,255,0.94)')
+      }
+    })
+
+    return row
+  }
+
+  function buildFunctionSection(parent, node, emit) {
+    const sec = buildCollapsibleSection(parent, 'Function', true)
+    const row = sec.content.append('xhtml:div').style('display', 'flex').style('gap', '6px').style('align-items', 'center')
+    const options = getWorkflowOptionIds(node.module_id)
+    const select = row.append('xhtml:select')
+      .style('flex', '1 1 auto').style('height', '24px').style('border', '1px solid #d1d5db').style('border-radius', '6px').style('background', '#ffffff').style('font-size', '10px').style('color', '#374151')
+      .on('mousedown', ev => ev.stopPropagation())
+    options.forEach(id => {
+      const opt = select.append('xhtml:option').attr('value', id).text(id)
+      if (id === node.module_id) opt.attr('selected', 'selected')
+    })
+    select.on('change', function () {
+      const workflowId = this.value
+      const nextParams = { ...getDefaultWorkflowParams(workflowId), text: node.parameters?.text || node.parameters?.prompt_note || '', prompt_note: node.parameters?.prompt_note || node.parameters?.text || '', positive_prompt: node.parameters?.positive_prompt || '', negative_prompt: node.parameters?.negative_prompt || '' }
+      node.parameters = nextParams
+      emit('refresh-node', node.id, workflowId, nextParams, workflowId)
+    })
+    return sec
+  }
+
+  function buildPromptSection(parent, node, emit, inputMediaResolver = null) {
+    const promptState = extractPromptState(node)
+    let noteArea, positiveArea, negativeArea
+    const sec = buildCollapsibleSection(parent, 'Prompts', true, (controls) => {
+      buildTinyButton(controls, 'A', 'Agent assist', async () => {
+        try {
+          clearPrevAgentContext()
+          const mediaUrl = inputMediaResolver ? inputMediaResolver() : (getInputMediaUrls(node)[0] || '')
+          const payload = { user_input: noteArea.property('value') || '', node_id: node.id, image_url: mediaUrl || '', workflow_context: { current_workflow: node.module_id, parent_nodes: node.originalParents || [] } }
+          const res = await fetch('/api/agents/process', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+          const data = await res.json()
+          setPrevAgentContext({ global_context: data.global_context || '', intent: data.intent || '', selected_workflow: data.selected_workflow || '', knowledge_context: data.knowledge_context || '', image_caption: data.image_caption || '', style: data.style || '' })
+          const next = { note: data.message?.text || noteArea.property('value') || '', positive: data.message?.positive || positiveArea.property('value') || '', negative: data.message?.negative || negativeArea.property('value') || '' }
+          noteArea.property('value', next.note); positiveArea.property('value', next.positive); negativeArea.property('value', next.negative)
+          syncPromptState(node, next, emit)
+        } catch (err) { console.error('Agent assist failed:', err) }
+      })
+      buildTinyButton(controls, '↻', 'Generate', () => {
+        const next = { note: noteArea.property('value') || '', positive: positiveArea.property('value') || '', negative: negativeArea.property('value') || '' }
+        syncPromptState(node, next, emit)
+        const regenerated = { ...(node.parameters || {}) }
+        regenerated.text = next.note; regenerated.prompt_note = next.note; regenerated.positive_prompt = next.positive; regenerated.negative_prompt = next.negative
+        emit('regenerate-node', node.id, node.module_id, regenerated)
+      })
+    })
+
+    noteArea = sec.content.append('xhtml:textarea')
+      .attr('class', 'thin-scroll')
+      .style('width', '100%').style('min-height', '54px').style('padding', '6px 8px').style('font-size', '10px').style('border', '1px solid #e5e7eb').style('border-radius', '8px').style('background', '#f9fafb').style('resize', 'none').style('outline', 'none')
+      .attr('placeholder', 'Describe the scene, operation, or target effect...')
+      .property('value', promptState.note)
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('blur', () => syncPromptState(node, { note: noteArea.property('value') || '', positive: positiveArea.property('value') || '', negative: negativeArea.property('value') || '' }, emit))
+
+    const cuesRow = sec.content.append('xhtml:div').style('display', 'grid').style('grid-template-columns', '1fr 1fr').style('gap', '6px').style('margin-top', '6px')
+    const posWrap = cuesRow.append('xhtml:div').style('display', 'flex').style('flex-direction', 'column').style('gap', '4px')
+    posWrap.append('xhtml:div').style('font-size', '10px').style('font-weight', '600').style('color', '#6b7280').text('Positive cues')
+    positiveArea = posWrap.append('xhtml:textarea')
+      .attr('class', 'thin-scroll')
+      .style('width', '100%').style('min-height', '42px').style('padding', '6px 8px').style('font-size', '10px').style('border', '1px solid #e5e7eb').style('border-radius', '8px').style('background', '#f9fafb').style('resize', 'none').style('outline', 'none')
+      .property('value', promptState.positive)
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('blur', () => syncPromptState(node, { note: noteArea.property('value') || '', positive: positiveArea.property('value') || '', negative: negativeArea.property('value') || '' }, emit))
+
+    const negWrap = cuesRow.append('xhtml:div').style('display', 'flex').style('flex-direction', 'column').style('gap', '4px')
+    negWrap.append('xhtml:div').style('font-size', '10px').style('font-weight', '600').style('color', '#6b7280').text('Negative cues')
+    negativeArea = negWrap.append('xhtml:textarea')
+      .attr('class', 'thin-scroll')
+      .style('width', '100%').style('min-height', '42px').style('padding', '6px 8px').style('font-size', '10px').style('border', '1px solid #e5e7eb').style('border-radius', '8px').style('background', '#f9fafb').style('resize', 'none').style('outline', 'none')
+      .property('value', promptState.negative)
+      .on('mousedown', ev => ev.stopPropagation())
+      .on('blur', () => syncPromptState(node, { note: noteArea.property('value') || '', positive: positiveArea.property('value') || '', negative: negativeArea.property('value') || '' }, emit))
+
+    return sec
+  }
+
+  function buildAssetsSection(parent, node, emit, state) {
+    const sec = buildCollapsibleSection(parent, 'Assets', true, (controls) => {
+      const uploader = createHiddenUploader(controls, node, emit, (localUrls) => {
+        state.inputUrls = [...state.inputUrls, ...localUrls]
+        if (!node.assets) node.assets = {}
+        if (!node.assets.input) node.assets.input = {}
+        node.assets.input.images = [...state.inputUrls]
+        renderRow()
+      })
+      buildTinyButton(controls, '+', 'Upload assets', () => uploader.node().click())
+    })
+
+    const contentRoot = sec.content.append('xhtml:div')
+
+    const renderRow = () => {
+      contentRoot.selectAll('*').remove()
+      renderThumbRow(contentRoot, state.inputUrls, {
+        emptyText: 'Upload or drop input assets here',
+        makeDroppable: true,
+        onDropMedia: (resolvedUrl) => {
+          if (!state.inputUrls.includes(resolvedUrl)) {
+            state.inputUrls.push(resolvedUrl)
+            if (!node.assets) node.assets = {}
+            if (!node.assets.input) node.assets.input = {}
+            node.assets.input.images = [...state.inputUrls]
+            renderRow()
+          }
+        },
+        onThumbClick: (url, type) => emit('open-preview', url, type)
+      })
+    }
+    renderRow()
+    return sec
+  }
+
+  function buildResultsSection(parent, node, emit, state) {
+    const sec = buildCollapsibleSection(parent, 'Results', true)
+    const root = sec.content.append('xhtml:div').style('display', 'flex').style('flex-direction', 'column').style('gap', '6px')
+    root.append('xhtml:div').style('font-size', '10px').style('font-weight', '600').style('color', '#6b7280').text('Generated')
+    renderThumbRow(root, state.outputUrls, { emptyText: 'No generated results yet', onThumbClick: (url, type) => emit('open-preview', url, type), onStageClick: (url, type) => emit('add-clip', node, url, type) })
+    if (node.assets && node.assets.segmented) {
+      root.append('xhtml:div').style('font-size', '10px').style('font-weight', '600').style('color', '#6b7280').text('Segments')
+      root.append('xhtml:div').attr('id', `entities-${node.node_id || node.id}`).style('display', 'flex').style('flex-wrap', 'wrap').style('gap', '6px').style('min-height', '40px')
+    }
+    return sec
+  }
+
+  function buildSettingsSection(parent, node) {
+    const sec = buildCollapsibleSection(parent, 'Settings', false)
+    const params = node.parameters || {}
+    const excluded = new Set(['text', 'prompt_note', 'global_context', 'positive_prompt', 'negative_prompt'])
+    const keys = Object.keys(params).filter(k => !excluded.has(k))
+    if (!keys.length) {
+      sec.content.append('xhtml:div').style('font-size', '10px').style('color', '#9ca3af').text('No adjustable parameters for the current function')
+      return sec
+    }
+    const grid = sec.content.append('xhtml:div').style('display', 'grid').style('grid-template-columns', '1fr 1fr').style('gap', '6px')
+    keys.forEach(key => {
+      const val = params[key]
+      const field = grid.append('xhtml:div').style('display', 'flex').style('flex-direction', 'column').style('gap', '4px')
+      field.append('xhtml:div').style('font-size', '10px').style('font-weight', '600').style('color', '#6b7280').text(key.replace(/_/g, ' '))
+      if (key === 'camera_pose') {
+        const select = field.append('xhtml:select').attr('class', 'node-input').attr('data-key', key).style('height', '24px').style('border', '1px solid #d1d5db').style('border-radius', '6px').style('font-size', '10px').style('background', '#ffffff').on('mousedown', ev => ev.stopPropagation())
+        ;['Pan Up','Pan Down','Pan Left','Pan Right','Zoom In','Zoom Out','Anti Clockwise (ACW)','ClockWise (CW)'].forEach(opt => {
+          const option = select.append('xhtml:option').attr('value', opt).text(opt)
+          if (val === opt) option.attr('selected', 'selected')
+        })
+      } else {
+        field.append('xhtml:input').attr('class', 'node-input').attr('data-key', key).attr('type', typeof val === 'number' ? 'number' : 'text').attr('value', val).style('height', '24px').style('border', '1px solid #d1d5db').style('border-radius', '6px').style('font-size', '10px').style('padding', '0 6px').style('background', '#ffffff').on('mousedown', ev => ev.stopPropagation())
+      }
+    })
+    return sec
+  }
+
+  function renderUnifiedVisualNode(gEl, d, selectedIds, emit) {
+    const state = { inputUrls: [...getInputMediaUrls(d)], outputUrls: [...getOutputMediaUrls(d)] }
+    const fo = gEl.append('foreignObject').attr('width', d.calculatedWidth).attr('height', d.calculatedHeight).attr('x', -d.calculatedWidth / 2).attr('y', -d.calculatedHeight / 2).style('overflow', 'visible')
+    const card = fo.append('xhtml:div').attr('class', 'node-card').attr('data-node-category', getNodeCategory(d)).style('width', '100%').style('height', '100%').style('display', 'flex').style('flex-direction', 'column').style('border-width', '2px').style('border-color', getNodeBorderColor(d)).style('border-radius', '10px').style('background', '#ffffff').style('position', 'relative').style('cursor', 'pointer').style('user-select', 'none').style('-webkit-user-select', 'none')
+    setCardSelected(card, d, isVisuallySelected(d, selectedIds))
+    addRightClickMenu(card, d, emit)
+    card.on('click', ev => {
+      if (ev.target && ev.target.closest && ev.target.closest('button, img, video, input, textarea, select')) return
+      ev.stopPropagation()
+      const selected = new Set(selectedIds)
+      const on = selected.has(d.id)
+      if (on) selected.delete(d.id)
+      else if (selected.size < 2) selected.add(d.id)
+      setCardSelected(card, d, !on)
+      emit('update:selectedIds', Array.from(selected))
+    })
+    buildHeader(card, d)
+    const body = card.append('xhtml:div').style('flex', '1 1 auto').style('min-height', '0').style('display', 'flex').style('flex-direction', 'column').style('gap', '6px').style('padding', '6px').style('overflow-y', 'auto')
+    buildFunctionSection(body, d, emit)
+    buildAssetsSection(body, d, emit, state)
+    buildPromptSection(body, d, emit, () => state.inputUrls[0] || '')
+    buildResultsSection(body, d, emit, state)
+    buildSettingsSection(body, d)
+    addTooltip(gEl, d)
+  }
+
+  function renderUnifiedAudioNode(gEl, d, selectedIds, emit) {
+    const state = { inputUrls: [...getInputMediaUrls(d)], outputUrls: [...getOutputMediaUrls(d)] }
+    const fo = gEl.append('foreignObject').attr('width', d.calculatedWidth).attr('height', d.calculatedHeight).attr('x', -d.calculatedWidth / 2).attr('y', -d.calculatedHeight / 2).style('overflow', 'visible')
+    const card = fo.append('xhtml:div').attr('class', 'node-card').attr('data-node-category', getNodeCategory(d)).style('width', '100%').style('height', '100%').style('display', 'flex').style('flex-direction', 'column').style('border-width', '2px').style('border-color', getNodeBorderColor(d)).style('border-radius', '10px').style('background', '#ffffff').style('position', 'relative').style('cursor', 'pointer').style('user-select', 'none').style('-webkit-user-select', 'none')
+    setCardSelected(card, d, isVisuallySelected(d, selectedIds))
+    addRightClickMenu(card, d, emit)
+    card.on('click', ev => {
+      if (ev.target && ev.target.closest && ev.target.closest('button, input, textarea, select')) return
+      ev.stopPropagation()
+      const selected = new Set(selectedIds)
+      const on = selected.has(d.id)
+      if (on) selected.delete(d.id)
+      else if (selected.size < 2) selected.add(d.id)
+      setCardSelected(card, d, !on)
+      emit('update:selectedIds', Array.from(selected))
+    })
+    buildHeader(card, d)
+    const body = card.append('xhtml:div').style('flex', '1 1 auto').style('min-height', '0').style('display', 'flex').style('flex-direction', 'column').style('gap', '6px').style('padding', '6px').style('overflow-y', 'auto')
+    buildFunctionSection(body, d, emit)
+    buildAssetsSection(body, d, emit, state)
+    buildPromptSection(body, d, emit, () => state.inputUrls[0] || '')
+    buildResultsSection(body, d, emit, state)
+    buildSettingsSection(body, d)
+    addTooltip(gEl, d)
   }
 
 
@@ -1029,10 +1419,11 @@ export function renderTree(
       .style('flex-direction', 'column')
       .style('border-width', '2px')
       .style('border-color', getNodeBorderColor(d))
-      .style('border-radius', '8px')
+      .style('border-radius', '12px')
       .style('position', 'relative')
       .style('cursor', 'pointer')
       .style('background-color', '#ffffff')
+      .style('box-shadow', '0 2px 8px rgba(15,23,42,0.05)')
       .style('user-select', 'none')
       .style('-webkit-user-select', 'none')
 
@@ -1075,7 +1466,7 @@ export function renderTree(
 
     headerRow.append('xhtml:span')
       .attr('class', 'io-label')
-      .text('Input Thought')
+      .text('Draft Note')
 
     // 发送小按钮：挪到 Input Thought 右侧
     const sendBtn = headerRow.append('xhtml:button')
@@ -1104,7 +1495,7 @@ export function renderTree(
       .style('resize', 'none')
       .style('outline', 'none')
       .style('font-family', 'inherit')
-      .attr('placeholder', 'Describe your idea, goal, or rough story...')
+      .attr('placeholder', 'Describe the next keyframe state, visual goal, or revision idea...')
       .property('value', initialText)
       .on('mousedown', ev => ev.stopPropagation())
 
@@ -1140,553 +1531,12 @@ export function renderTree(
    * 图文混排节点：左侧大文本，右侧图片/占位符
    */
   function renderTextImageNode(gEl, d, selectedIds, emit) {
-    // 1. 计算布局 (类似 IO 卡)
-    const fo = gEl.append('foreignObject')
-      .attr('width', d.calculatedWidth)
-      .attr('height', d.calculatedHeight)
-      .attr('x', -d.calculatedWidth / 2)
-      .attr('y', -d.calculatedHeight / 2)
-      .style('overflow', 'visible')
-
-    const card = fo.append('xhtml:div')
-      .attr('class', 'node-card')
-      .attr('data-node-category', getNodeCategory(d))
-      .style('width', '100%')
-      .style('height', '100%')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('border-width', '2px')
-      .style('border-radius', '8px')
-      .style('border-color', getNodeBorderColor(d))
-      .style('position', 'relative')
-      .style('cursor', 'pointer')
-      .style('background-color', '#ffffff')
-      .style('user-select', 'none')
-      .style('-webkit-user-select', 'none')
-
-    setCardSelected(card, d, isVisuallySelected(d, selectedIds))
-
-    card.on('click', ev => {
-      if (
-        ev.target &&
-        ev.target.closest &&
-        ev.target.closest('button, img, video, input, textarea')
-      ) return
-
-      ev.stopPropagation()
-      const selected = new Set(selectedIds)
-      const on = selected.has(d.id)
-      if (on) selected.delete(d.id)
-      else if (selected.size < 2) selected.add(d.id)
-      setCardSelected(card, d, !on)
-      emit('update:selectedIds', Array.from(selected))
-    })
-
-    card.on('mouseenter', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1'))
-      .on('mouseleave', () => card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0'))
-
-    buildHeader(card, d)
-    addRightClickMenu(card, d, emit);
-    // --- 核心布局：左右分栏 ---
-    const body = card.append('xhtml:div')
-      .style('flex', '1 1 auto')
-      .style('min-height', '0')
-      .style('display', 'flex')
-      .style('flex-direction', 'row') // 左右排列
-
-    // === 左侧：纯文本编辑器 ===
-    const left = body.append('xhtml:div')
-      .style('flex', '1') // 占据 50%
-      .style('min-width', '0')
-      .style('border-right', '1px solid #e5e7eb')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-
-    // 这里复用你之前改好的 textarea 逻辑
-    const promptText = d.parameters?.text || d.parameters?.positive_prompt || ''
-    const textArea = left.append('xhtml:textarea')
-        .attr('class', 'thin-scroll')
-        .style('flex', '1').style('width', '100%').style('padding', '6px')
-        .style('font-size', '10px').style('color', '#374151')
-        .style('border', 'none').style('resize', 'none').style('outline', 'none')
-        .style('background', 'transparent')
-        .property('value', promptText)
-        .on('mousedown', ev => ev.stopPropagation())
-        
-        .on('blur', function() {
-            const newVal = d3.select(this).property('value')
-            if (newVal !== promptText) {
-              if (!d.parameters) d.parameters = {}
-              d.parameters.text = newVal
-              emit('update-node-parameters', d.id, d.parameters)
-            }
-        })
-
-    // === 右侧：媒体显示区 ===
-    const right = body.append('xhtml:div')
-      .style('flex', '1 1 0')
-      .style('min-width', '0')
-      .style('padding', '2px 4px')
-      .style('display', 'flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('position', 'relative')
-      .style('overflow', 'hidden')
-
-    // 判断是否有媒体内容
-    const hasMedia = !!(d.assets && d.assets.input && d.assets.input.images && d.assets.input.images.length > 0)
-    const mediaUrl = hasMedia ? d.assets.input.images : ''
-    console.log(`rendetTextImageNode ${mediaUrl}`)
-    
-    // 创建上传容器（居中显示）
-    const uploadContainer = right.append('xhtml:div')
-      .style('width', '80%')
-      .style('height', '80%')
-      .style('display', 'flex')
-      .style('align-items', 'center')
-      .style('justify-content', 'center')
-      .style('gap', '8px')
-      .style('border', hasMedia ? 'none' : '2px dashed #d1d5db')
-      .style('border-radius', '4px')
-      .style('cursor', 'pointer')
-      .style('transition', 'border-color 0.2s')
-      .style('position', 'relative')   // ⭐ 关键：让绝对定位 input 只盖住这个 80% 区域
-      .on('mouseenter', function() {
-        if (!hasMedia) d3.select(this).style('border-color', '#9ca3af')
-      })
-      .on('mouseleave', function() {
-        if (!hasMedia) d3.select(this).style('border-color', '#d1d5db')
-      })
-
-
-    // 如果有媒体，显示媒体内容
-    if (hasMedia) {
-      mediaUrl.slice(0, 2).forEach(imgUrl => {
-      uploadContainer.append('xhtml:img')
-        .attr('src', imgUrl)
-        .style('max-width', '50%') // 每张图占容器一半宽度
-        .style('max-height', '100%')
-        .style('object-fit', 'contain')
-        .style('border-radius', '4px'); // 可选：添加边框圆角
-  });
-    } else {
-      // 无媒体时显示加号和提示文字
-      const uploadContent = uploadContainer.append('xhtml:div')
-        .style('text-align', 'center')
-        .style('color', '#6b7280')
-
-      // 加号图标（使用大号字体模拟）
-      uploadContent.append('xhtml:div')
-        .style('font-size', '24px')
-        .style('line-height', '1')
-        .style('margin-bottom', '4px')
-        .text('+')
-
-    }
-
-    // 添加实际的文件上传输入（隐藏但保持功能）
-    const fileInput = uploadContainer.append('xhtml:input')
-      .attr('type', 'file')
-      .attr('accept', 'image/*')
-      .attr('multiple', true)
-      .style('position', 'absolute')
-      .style('top', '0')
-      .style('left', '0')
-      .style('width', '100%')
-      .style('height', '100%')
-      .style('opacity', '0')
-      .style('cursor', 'pointer')
-      .on('mousedown', ev => ev.stopPropagation())  // ⭐ 不让事件继续冒泡到 card
-      .on('click', ev => ev.stopPropagation())
-      .on('change', function () {
-        const file = this.files && this.files.length > 0 ? this.files[0] : null
-        if (file) {
-          emit('upload-media', d.id, file)
-          this.value = ''
-        } else {
-          console.warn('未选择有效文件')
-        }
-      })
-
-    const toolbar = card.append('xhtml:div')
-      .style('flex-shrink', '0')
-      .style('padding', '4px 2px')
-      .style('display', 'flex')
-      .style('justify-content', 'flex-end')
-      .style('gap', '4px')
-
-
-    // Agent button
-    const AgentBtn = toolbar.append('xhtml:button')
-      .text('A')
-      .attr('class', 'icon-circle-btn')
-      .attr('title','agent button')
-      .on('mousedown', ev => ev.stopPropagation())
-      .on('click', (ev) => {
-        ev.stopPropagation();
-        //清空agent状态
-        clearPrevAgentContext();
-        // 收集需要传递的内容（例如节点参数、用户输入等）
-        const payload = {
-          user_input: d.parameters?.positive_prompt || d.parameters?.text || '', // 节点文本内容
-          node_id: d.id, // 当前节点ID
-          image_url: mediaUrl || '',
-          workflow_context: {
-            current_workflow: d.module_id, // 当前使用的工作流
-            parent_nodes: d.originalParents || [] // 父节点信息
-          }
-        };
-        //发送请求到后端agent接口
-        fetch('/api/agents/process', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        })
-        .then(res => res.json())
-        .then(data => {
-          console.log('Agent处理结果:', data);
-            // 提取需要共享的关键上下文（按需选择，不用全存）
-          const agentContext = {
-            global_context: data.global_context || '',
-            intent: data.intent || '',
-            selected_workflow: data.selected_workflow || '',
-            knowledge_context: data.knowledge_context || '',
-            image_caption: data.image_caption || '',
-            style: data.style || ''
-          };
-          // 存储到共享工具中（关键步骤）
-          setPrevAgentContext(agentContext);
-          
-          // 处理返回结果（例如更新节点、提示用户等）
-          const rawWorkflowId = data.selected_workflow || '';
-          const workflowId = rawWorkflowId.replace(".json", ''); // 移除末尾的 .json
-          const workflow_title = data.workflow_title;
-          import('@/lib/useWorkflowForm.js').then(({ workflowParameters }) => {
-          if (!workflowParameters) {
-            console.error('workflowParameters 未正确导入');
-            return;
-          }
-
-          // 1. 获取对应工作流的参数定义数组（如 [{id: 'positive_prompt', ...}, ...]）
-          const paramDefinitions = workflowParameters[workflowId] || [];
-          
-          // 2. 将参数定义数组转换为 { id: defaultValue } 格式的对象
-          const defaultParams = paramDefinitions.reduce((obj, param) => {
-            obj[param.id] = param.defaultValue; // 以参数id为键，默认值为值
-            return obj;
-          }, {});
-          
-          // 3. 整合参数（agent返回的prompt覆盖默认值）
-          const updatedParams = {
-            ...defaultParams, // 基础默认参数
-            positive_prompt: data.message.positive || defaultParams.positive_prompt || '', // 优先使用agent返回的positive
-            negative_prompt: data.message.negative || defaultParams.negative_prompt || '', // 优先使用agent返回的negative
-          };
-          console.log('转换后的参数格式:', updatedParams);
-
-
-          // 4. 更新节点参数并触发刷新
-          d.parameters = updatedParams;
-          // 5. 调用App.vue的handleRefreshNode刷新节点
-          emit('refresh-node', d.id, workflowId, d.parameters,workflow_title);
-          });
-        })
-        
-        .catch(err => console.error('调用Agent失败:', err));
-      })
-      .on('mouseenter', function () {
-        d3.select(this)
-          .style('background', '#6b7280')
-          .style('color', '#ffffff')
-          .style('border-color', '#4b5563')
-      })
-      .on('mouseleave', function () {
-        d3.select(this)
-          .style('background', '#ffffff')
-          .style('color', '#6b7280')
-          .style('border-color', '#e5e7eb')
-      })
-    addTooltip(gEl, d)
+    renderUnifiedVisualNode(gEl, d, selectedIds, emit)
   }
 
 
-  /**
- * 文本 + 音频节点（上下结构，分 Input / Output 两块）
- */
 function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
-  // 兼容数组或字符串形式的 audio 资源
-  let mediaUrl = '';
-  const audioAsset = d.assets?.output?.audio;
-  if (Array.isArray(audioAsset)) {
-    mediaUrl = audioAsset[0] || '';
-  } else if (typeof audioAsset === 'string') {
-    mediaUrl = audioAsset;
-  }
-
-  const promptText = (d.parameters)
-    ? (d.parameters.positive_prompt || d.parameters.text || '')
-    : '';
-  // console.log(`audio prompt`,promptText)
-  // console.log(`d.parameters`,d.parameters)
-
-  const fo = gEl.append('foreignObject')
-    .attr('width', d.calculatedWidth)
-    .attr('height', d.calculatedHeight)
-    .attr('x', -d.calculatedWidth / 2)
-    .attr('y', -d.calculatedHeight / 2)
-    .style('overflow', 'visible');
-
-  const card = fo.append('xhtml:div')
-    .attr('class', 'node-card')
-    .attr('data-node-category', getNodeCategory(d))
-    .style('width', '100%')
-    .style('height', '100%')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('border-width', '2px')
-    .style('border-color', getNodeBorderColor(d))
-    .style('border-radius', '8px')
-    .style('position', 'relative')
-    .style('cursor', 'pointer')
-    .style('background-color', '#ffffff')
-    .style('user-select', 'none')
-    .style('-webkit-user-select', 'none');
-
-  setCardSelected(card, d, isVisuallySelected(d, selectedIds))
-
-  card.on('click', ev => {
-    if (ev.target && ev.target.closest && ev.target.closest('button, input, textarea, video, img')) return;
-    ev.stopPropagation();
-    const selected = new Set(selectedIds);
-    const on = selected.has(d.id);
-    if (on) selected.delete(d.id);
-    else if (selected.size < 2) selected.add(d.id);
-    setCardSelected(card, d, !on);
-    emit('update:selectedIds', Array.from(selected));
-  });
-
-  card.on('mouseenter', () =>
-    card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1')
-  ).on('mouseleave', () =>
-    card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0')
-  );
-
-  // Header：节点标题 + 折叠 / 复制 / 删除
-  buildHeader(card, d);
-  addRightClickMenu(card, d, emit);
-
-  // ====== 主体：上下两块 Input / Output ======
-  const body = card.append('xhtml:div')
-    .style('flex', '1 1 auto')
-    .style('min-height', '0')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('padding', '4px 4px')
-    .style('gap', '4px');
-
-  /* ==================== Input 区 ==================== */
-  const inputSection = body.append('xhtml:div')
-    .style('flex', '0 0 auto')
-    .style('display', 'flex')
-    .style('flex-direction', 'column');
-
-  const inputHeader = inputSection.append('xhtml:div')
-    .attr('class', 'io-header');
-
-  inputHeader.append('xhtml:span')
-    .attr('class', 'io-title')
-    .text('Input');
-
-  // ↻：根据当前文本重新生成音频
-  inputHeader.append('xhtml:div')
-    .attr('class', 'icon-circle-btn output-clip-btn')
-    .text('↻')
-    .attr('title', 'Apply & Regenerate')
-    .on('mouseenter', function () { d3.select(this).style('color', '#2563eb'); })
-    .on('mouseleave', function () { d3.select(this).style('color', '#6b7280'); })
-    .on('mousedown', ev => ev.stopPropagation())
-    .on('click', (ev) => {
-      ev.stopPropagation();
-      const textVal = textArea.property('value') || '';
-      const baseParams = d.parameters || {};
-      const currentParams = {
-        ...baseParams,
-        text: textVal,
-        positive_prompt: textVal
-      };
-      emit('regenerate-node', d.id, d.module_id, currentParams);
-    });
-
-  // inputSection.append('xhtml:div')
-  //   .attr('class', 'io-divider');
-
-  const textArea = inputSection.append('xhtml:textarea')
-    .attr('class', 'thin-scroll')
-    .style('flex', '0 0 auto')
-    // .style('width', '100%')
-    .style('min-height', '48px')
-    .style('padding', '4px 6px')
-    .style('font-size', '10px')
-    .style('color', '#374151')
-    .style('background-color', '#f9fafb')
-    .style('border', '1px solid #e5e7eb')
-    .style('border-radius', '6px')
-    .style('resize', 'none')
-    .style('outline', 'none')
-    .style('font-family', 'inherit')
-    .attr('placeholder', 'Describe the narration or sound you want to generate...')
-    .property('value', promptText)
-    .on('mousedown', ev => ev.stopPropagation());
-
-  // 文本修改同步到参数
-  textArea.on('blur', function () {
-    const val = d3.select(this).property('value') || '';
-    if (!d.parameters) d.parameters = {};
-    d.parameters.text = val;
-    d.parameters.positive_prompt = val;
-    emit('update-node-parameters', d.id, d.parameters);
-  });
-
-  inputSection.append('xhtml:div')
-    .attr('class', 'io-divider');
-
-  /* ==================== Output 区 ==================== */
-  const outputSection = body.append('xhtml:div')
-    .style('flex', '1 1 auto')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('min-height', '0');
-
-  const outputHeader = outputSection.append('xhtml:div')
-    .attr('class', 'io-header');
-
-  outputHeader.append('xhtml:span')
-    .attr('class', 'io-title')
-    .text('Output');
-
-  // A：加入到 storyboard buffer（等价原来 footer 里的 add-clip-btn）
-  outputHeader.append('xhtml:div')
-    .style('margin-left', 'auto')
-    .style('cursor', mediaUrl ? 'pointer' : 'not-allowed')
-    .attr('class', 'icon-circle-btn output-clip-btn')
-    .style('color', mediaUrl ? '#6b7280' : '#d1d5db')
-    .text('↗')
-    .attr('title', 'Add to storyboard')
-    .on('mousedown', ev => ev.stopPropagation())
-    .on('click', ev => {
-      ev.stopPropagation();
-      if (!mediaUrl) return;
-      emit('add-clip', d, mediaUrl,'audio');
-    })
-    .on('mouseenter', function () {
-      if (!mediaUrl) return;
-      d3.select(this).style('color', '#2563eb');
-    })
-    .on('mouseleave', function () {
-      if (!mediaUrl) return;
-      d3.select(this).style('color', '#6b7280');
-      
-    });
-
-  // outputSection.append('xhtml:div')
-  //   .attr('class', 'io-divider');
-
-  // 播放器区域：和其他节点的内外边距保持一致
-  const audioRow = outputSection.append('xhtml:div')
-    .style('flex', '1 1 auto')
-    .style('display', 'flex')
-    .style('align-items', 'center')
-    .style('gap', '8px')
-    .style('padding', '2px 0')
-    .style('min-height', '0');
-
-  const playBtn = audioRow.append('xhtml:button')
-    .style('width', '32px')
-    .style('height', '32px')
-    .style('border', 'none')
-    .style('background-color', NODE_COLORS.audio)
-    .style('color', '#ffffff')
-    .style('border-radius', '50%')
-    .style('font-size', '16px')
-    .style('display', 'flex')
-    .style('align-items', 'center')
-    .style('justify-content', 'center')
-    .style('padding', '0')
-    .style('line-height', '1')
-    .style('flex-shrink', '0')
-    .style('cursor', mediaUrl ? 'pointer' : 'not-allowed')
-    .style('user-select', 'none')
-    .style('opacity', mediaUrl ? '1' : '0.5')
-    .html('▶')
-    .on('mousedown', ev => ev.stopPropagation());
-
-  const waveformWrapper = audioRow.append('xhtml:div')
-    .style('flex-grow', '1')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('justify-content', 'center')
-    .style('min-width', '0');
-
-  const waveformDiv = waveformWrapper.append('xhtml:div')
-    .style('width', '100%')
-    .style('height', '20px');
-
-  const timeDisplay = waveformWrapper.append('xhtml:div')
-    .style('font-size', '10px')
-    .style('color', '#6b7280')
-    .text(mediaUrl ? '0:00 / --:--' : '');
-
-  // WaveSurfer 逻辑（仅在有音频时初始化）
-  let wavesurfer = null;
-  if (mediaUrl) {
-    wavesurfer = WaveSurfer.create({
-      container: waveformDiv.node(),
-      waveColor: '#9ca3af',
-      progressColor: NODE_COLORS.audio,
-      height: 20,
-      barHeight: 2,
-      barWidth: 2,
-      barGap: 1,
-      barRadius: 2,
-      url: mediaUrl
-    });
-
-    wavesurfer.on('ready', (duration) => {
-      timeDisplay.text(`0:00 / ${formatTime(duration)}`);
-    });
-
-    wavesurfer.on('timeupdate', (currentTime) => {
-      timeDisplay.text(`${formatTime(currentTime)} / ${formatTime(wavesurfer.getDuration())}`);
-    });
-
-    wavesurfer.on('finish', () => {
-      playBtn.html('▶');
-    });
-
-    wavesurfer.on('error', (err) => {
-      console.error('WaveSurfer error:', err);
-      waveformDiv.html(`<span style="color:red; font-size:10px;">Audio error</span>`);
-    });
-
-    playBtn.on('click', ev => {
-      ev.stopPropagation();
-      wavesurfer.playPause();
-      if (wavesurfer.isPlaying()) {
-        playBtn.html('⏸');
-      } else {
-        playBtn.html('▶');
-      }
-    });
-  } else {
-    playBtn.on('click', ev => ev.stopPropagation());
-  }
-
-  // 节点被移除时销毁 WaveSurfer
-  fo.on('remove', () => {
-    if (wavesurfer) wavesurfer.destroy();
-  });
-
-  addTooltip(gEl, d);
+  renderUnifiedAudioNode(gEl, d, selectedIds, emit)
 }
 
 
@@ -1694,1678 +1544,13 @@ function renderAudioNode(gEl, d, selectedIds, emit, workflowTypes) {
  * 左右 IO 卡：左输入，右输出（图片 / 视频 / 文本）
  */
 function renderIONode(gEl, d, selectedIds, emit, workflowTypes) {
-  const assets = d.assets?.output || {};
-  const allMedia = assets.images || [];
-
-  const videoUrls = allMedia.filter(url =>
-    url.includes('.mp4') ||
-    url.includes('.mov') ||
-    url.includes('.webm') ||
-    url.includes('subfolder=video')
-  );
-  const imageUrls = allMedia.filter(url => !videoUrls.includes(url));
-
-  const hasMedia = !!(d.assets && d.assets.output && d.assets.output.images && d.assets.output.images.length > 0);
-  const rawIVPath = hasMedia ? d.assets.output.images[0] : '';
-
-  const isVideo = rawIVPath.includes('.mp4') || rawIVPath.includes('subfolder=video');
-  const isImage = hasMedia && !isVideo && assets.type !== 'audio';
-  const canAddToStitch = hasMedia && (isImage || isVideo);
-
-  const promptText = d.parameters ? (d.parameters.positive_prompt || d.parameters.text) : null;
-  const hasPrompt = typeof promptText === 'string' && promptText.trim() !== '';
-
-  // 从 CSS 变量里读模态颜色
-  const rootStyle = getComputedStyle(document.documentElement);
-  const mediaVideoColor = rootStyle.getPropertyValue('--media-video').trim() || '#5ABF8E';
-  const mediaImageColor = rootStyle.getPropertyValue('--media-image').trim() || '#5F96DB';
-
-  // ⭐ 支持多选：用 Set 存所有选中的 mediaUrl
-  const selectedMediaUrls = new Set();
-  let selectedMediaUrl = null; // 保留最后一次点击的，兼容你其他逻辑
-
-
-  const fo = gEl.append('foreignObject')
-    .attr('width', d.calculatedWidth)
-    .attr('height', d.calculatedHeight)
-    .attr('x', -d.calculatedWidth / 2)
-    .attr('y', -d.calculatedHeight / 2)
-    .style('overflow', 'visible');
-
-  const card = fo.append('xhtml:div')
-    .attr('class', 'node-card')
-    .attr('data-node-category', getNodeCategory(d))
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('height', '100%')
-    .style('cursor', 'pointer')
-    .style('position', 'relative')
-    .style('user-select', 'none')
-    .style('-webkit-user-select', 'none')
-
-  // 初始选中状态
-  setCardSelected(card, d, isVisuallySelected(d, selectedIds))
-
-  addRightClickMenu(card, d, emit);
-
-  card.on('click', ev => {
-    if (ev.target && ev.target.closest && ev.target.closest('button, img, video, input, textarea')) return
-    ev.stopPropagation()
-    const selected = new Set(selectedIds)
-    const on = selected.has(d.id)
-    if (on) selected.delete(d.id)
-    else if (selected.size < 2) selected.add(d.id)
-    setCardSelected(card, d, !on)
-    emit('update:selectedIds', Array.from(selected))
-  })
-
-  /* ---------- 顶部 header ---------- */
-  buildHeader(card, d);
-
-  /* ---------- 主体：左右两列 ---------- */
-  const body = card.append('xhtml:div')
-    .style('flex', '1 1 auto')
-    .style('min-height', '0')
-    .style('display', 'flex')
-    .style('padding', '4px 2px');
-
-  /* ==================== 左侧 Input 列 ==================== */
-  const left = body.append('xhtml:div')
-    .attr('class', 'thin-scroll nodrag')
-    .style('flex', '1 1 0')
-    .style('min-width', '0')
-    .style('padding', '2px 4px 4px')
-    .style('border-right', '1px solid #e5e7eb')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    // .style('gap', '2px')
-    .style('font-size', '9px')
-    .style('line-height', '1.3');
-
-  // Input + ↻
-  const headerRow = left.append('xhtml:div')
-    .attr('class', 'io-header'); 
-
-  headerRow.append('xhtml:span')
-    .attr('class', 'io-title')
-    .text('Input');
-
-  headerRow.append('xhtml:div')
-    .attr('class', 'icon-circle-btn')  // 仅加这个类，无其他新增
-    .text('↻')
-    .attr('title', 'Apply & Regenerate')
-    .on('mouseenter', function () { d3.select(this).style('color', '#2563eb'); })
-    .on('mouseleave', function () { d3.select(this).style('color', '#6b7280'); })
-    .on('mousedown', ev => ev.stopPropagation())
-    .on('click', (ev) => {
-      ev.stopPropagation();
-      const params = d.parameters || {};
-      const currentParams = {};
-
-      if (params.positive_prompt) {
-        const positivePhrases = parsePrompt(params.positive_prompt);
-        const positiveStr = positivePhrases
-          .filter(p => p.text.trim())
-          .map(p => `(${p.text.trim()}:${p.weight.toFixed(1)})`)
-          .join(', ');
-        currentParams.positive_prompt = positiveStr;
-      }
-
-      if (params.negative_prompt) {
-        const negativePhrases = parsePrompt(params.negative_prompt);
-        const negativeStr = negativePhrases
-          .filter(p => p.text.trim())
-          .map(p => `(${p.text.trim()}:${p.weight.toFixed(1)})`)
-          .join(', ');
-        currentParams.negative_prompt = negativeStr;
-      }
-
-      left.selectAll('.node-input').each(function () {
-        const el = d3.select(this);
-        const key = el.attr('data-key');
-        let val = el.property('value');
-        if (el.attr('type') === 'number') val = Number(val);
-        if (key && key !== 'positive_prompt' && key !== 'negative_prompt') {
-          currentParams[key] = val;
-        }
-      });
-
-      emit('regenerate-node', d.id, d.module_id, currentParams);
-    });
-
-  // 标题下方统一虚线
-  left.append('xhtml:div')
-    .attr('class', 'io-divider');
-
-  const params = d.parameters || {};
-  const isVideoNode = /Video/i.test(d.module_id)||d.module_id=='CameraControl'||d.module_id=='FrameInterpolation';
-  const orderedParamKeys = isVideoNode
-    ? ['batch_size', 'fps', 'time', 'height', 'width','camera_pose']
-    : ['batch_size', 'guidance', 'steps', 'height', 'width','high_threshold','low_threshold','position'];
-
-  const paramPairs = orderedParamKeys
-    .filter(k => params[k] !== undefined)
-    .map(k => [k, params[k]]);
-
-  const parsePrompt = (prompt) => {
-    if (!prompt) return [];
-    const trimmed = prompt.trim();
-    if (!trimmed) return [];
-
-    const noBrackets = trimmed.replace(/[()]/g, '');
-    return noBrackets
-      .split(',')
-      .map(item => item.trim())
-      .filter(Boolean)
-      .map(item => {
-        if (item.includes(':')) {
-          const [text, weightStr] = item.split(':').map(v => v.trim());
-          return { text, weight: parseFloat(weightStr) || 1.0 };
-        }
-        return { text: item, weight: 1.0 };
-      })
-      .filter(p => p.text.trim());
-  };
-
-    /* ---------- Positive Prompt ---------- */
-  const positiveSection = left.append('xhtml:div')
-    .attr('class', 'input-section input-section--primary');
-
-  // 在闭包里维护当前的 positive phrases 数组
-  let positivePhrases = parsePrompt(params.positive_prompt || params.text || '');
-  let positiveCollapsed = false;
-
-  const positiveHeader = positiveSection.append('xhtml:div')
-    .attr('class', 'prompt-section-header')
-    .on('mousedown', ev => ev.stopPropagation())
-    .on('click', ev => {
-      ev.stopPropagation();
-      if (!positivePhrases.length) return;  // 没内容时不能折叠 / 展开
-
-      positiveCollapsed = !positiveCollapsed;
-      positivePromptContainer.style('display', positiveCollapsed ? 'none' : 'block');
-      positiveToggle.text(positiveCollapsed ? '▸' : '▾');
-    })
-    // ⭐ 标题右键：只用于“新增一行”
-    .on('contextmenu', (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-
-      const menu = d3.select('body').append('xhtml:div')
-        .style('position', 'absolute')
-        .style('left', `${ev.pageX}px`)
-        .style('top', `${ev.pageY}px`)
-        .style('background', 'white')
-        .style('border', '1px solid #e5e7eb')
-        .style('border-radius', '4px')
-        .style('padding', '4px 0')
-        .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
-        .style('z-index', '1000')
-        .style('min-width', '180px');
-
-      const addMenuItem = (label, onClick) => {
-        menu.append('xhtml:div')
-          .style('padding', '4px 12px')
-          .style('cursor', 'pointer')
-          .style('font-size', '12px')
-          .style('color', '#374151')
-          .on('mouseenter', function () { d3.select(this).style('background', '#f3f4f6') })
-          .on('mouseleave', function () { d3.select(this).style('background', 'transparent') })
-          .text(label)
-          .on('click', () => {
-            onClick();
-            menu.remove();
-          });
-      };
-
-      addMenuItem('Add positive phrase', () => {
-        // 标题右键新增：在“标题下面”插入一行 => 插到数组最前面
-        positivePhrases.unshift({ text: '', weight: 1.0 });
-        syncPositiveParamsAndRender();
-      });
-
-      const closeMenu = () => {
-        menu.remove();
-        document.removeEventListener('click', closeMenu);
-      };
-      setTimeout(() => document.addEventListener('click', closeMenu), 0);
-    });
-
-  const positiveToggle = positiveHeader.append('xhtml:span')
-    .attr('class', 'prompt-toggle-icon')
-    .text('▾');
-
-  positiveHeader.append('xhtml:span')
-    .attr('class', 'prompt-section-title')
-    .text('Positive Prompt');
-
-  const positiveCountSpan = positiveHeader.append('xhtml:span')
-    .attr('class', 'prompt-count')
-    .text('(0)');
-
-  const positivePromptContainer = positiveSection.append('xhtml:div')
-    .attr('class', 'prompt-section-body');
-
-  const updatePositiveCount = () => {
-    positiveCountSpan.text(`(${positivePhrases.length})`);
-
-    if (!positivePhrases.length) {
-      positiveCollapsed = true;
-      positivePromptContainer.style('display', 'none');
-      positiveToggle.text('▸')
-        .style('color', '#d1d5db')
-        .style('cursor', 'default');
-    } else {
-      positiveToggle
-        .style('color', '#9ca3af')
-        .style('cursor', 'pointer');
-      positiveCollapsed = false;
-      positivePromptContainer.style('display', 'block');
-      positiveToggle.text('▾');
-    }
-  };
-
-    // 只同步参数，但不重绘 DOM（编辑时用）
-  const syncPositiveParams = () => {
-    const updatedPrompt = positivePhrases
-      .filter(p => p.text.trim())
-      .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`)
-      .join(', ');
-
-    params.positive_prompt = updatedPrompt;
-    emit('update-node-parameters', d.id, { ...params });
-  };
-
-  // 结构变化（新增 / 删除）时再重绘
-  const syncPositiveParamsAndRender = () => {
-    syncPositiveParams();
-    updatePositiveCount();
-    renderPositivePhraseRows();
-  };
-
-
-  const renderPositivePhraseRows = () => {
-    positivePromptContainer.selectAll('*').remove();
-
-    if (!positivePhrases.length) {
-      updatePositiveCount();
-      return;
-    }
-
-    updatePositiveCount();
-
-    positivePhrases.forEach((phrase, idx) => {
-      const row = positivePromptContainer.append('xhtml:div')
-        .attr('class', 'phrase-row');
-
-      // ⭐ phrase 行右键：新增（当前行下面）+ 删除
-      row.on('contextmenu', (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-
-        const menu = d3.select('body').append('xhtml:div')
-          .style('position', 'absolute')
-          .style('left', `${ev.pageX}px`)
-          .style('top', `${ev.pageY}px`)
-          .style('background', 'white')
-          .style('border', '1px solid #e5e7eb')
-          .style('border-radius', '4px')
-          .style('padding', '4px 0')
-          .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
-          .style('z-index', '1000')
-          .style('min-width', '180px');
-
-        const addMenuItem = (label, onClick) => {
-          menu.append('xhtml:div')
-            .style('padding', '4px 12px')
-            .style('cursor', 'pointer')
-            .style('font-size', '12px')
-            .style('color', '#374151')
-            .on('mouseenter', function () { d3.select(this).style('background', '#f3f4f6') })
-            .on('mouseleave', function () { d3.select(this).style('background', 'transparent') })
-            .text(label)
-            .on('click', () => {
-              onClick();
-              menu.remove();
-            });
-        };
-
-        addMenuItem('Add positive phrase below', () => {
-          positivePhrases.splice(idx + 1, 0, { text: '', weight: 1.0 });
-          syncPositiveParamsAndRender();
-        });
-
-        addMenuItem('Delete this positive phrase', () => {
-          positivePhrases.splice(idx, 1);   // 可以删到 0 行
-          syncPositiveParamsAndRender();
-        });
-
-        const closeMenu = () => {
-          menu.remove();
-          document.removeEventListener('click', closeMenu);
-        };
-        setTimeout(() => document.addEventListener('click', closeMenu), 0);
-      });
-
-      row.append('xhtml:input')
-        .attr('class', 'phrase-input')
-        .attr('type', 'text')
-        .attr('value', phrase.text)
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('input', function () {
-          positivePhrases[idx].text = this.value;
-          // 仅同步参数，不重渲染，避免光标丢失
-          syncPositiveParams();
-        });
-
-      // row.append('xhtml:input')
-      //   .attr('class', 'weight-input')
-      //   .attr('type', 'number')
-      //   .attr('min', '0.0')
-      //   .attr('max', '1.9')
-      //   .attr('step', '0.1')
-      //   .attr('value', phrase.weight.toFixed(1))
-      //   .on('mousedown', ev => ev.stopPropagation())
-      //   .on('input', function () {
-      //     let val = parseFloat(this.value);
-      //     if (isNaN(val)) val = 1.0;
-      //     val = Math.min(1.9, Math.max(0.0, val));
-      //     this.value = val.toFixed(1);
-      //     positivePhrases[idx].weight = val;
-      //     // 同上，只同步参数
-      //     syncPositiveParams();
-      //   });
-
-    });
-  };
-
-  // 初次渲染
-  renderPositivePhraseRows();
-
-
-  /* ---------- Negative Prompt ---------- */
-  const negativeSection = left.append('xhtml:div')
-    .attr('class', 'input-section');
-
-  let negativePhrases = parsePrompt(params.negative_prompt || '');
-  let negativeCollapsed = false;
-
-  const negativeHeader = negativeSection.append('xhtml:div')
-    .attr('class', 'prompt-section-header')
-    .on('mousedown', ev => ev.stopPropagation())
-    .on('click', ev => {
-      ev.stopPropagation();
-      if (!negativePhrases.length) return;
-
-      negativeCollapsed = !negativeCollapsed;
-      negativePromptContainer.style('display', negativeCollapsed ? 'none' : 'block');
-      negativeToggle.text(negativeCollapsed ? '▸' : '▾');
-    })
-    // ⭐ 标题右键：只“新增 negative phrase”
-    .on('contextmenu', (ev) => {
-      ev.preventDefault();
-      ev.stopPropagation();
-
-      const menu = d3.select('body').append('xhtml:div')
-        .style('position', 'absolute')
-        .style('left', `${ev.pageX}px`)
-        .style('top', `${ev.pageY}px`)
-        .style('background', 'white')
-        .style('border', '1px solid #e5e7eb')
-        .style('border-radius', '4px')
-        .style('padding', '4px 0')
-        .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
-        .style('z-index', '1000')
-        .style('min-width', '190px');
-
-      const addMenuItem = (label, onClick) => {
-        menu.append('xhtml:div')
-          .style('padding', '4px 12px')
-          .style('cursor', 'pointer')
-          .style('font-size', '12px')
-          .style('color', '#374151')
-          .on('mouseenter', function () { d3.select(this).style('background', '#f3f4f6') })
-          .on('mouseleave', function () { d3.select(this).style('background', 'transparent') })
-          .text(label)
-          .on('click', () => {
-            onClick();
-            menu.remove();
-          });
-      };
-
-      addMenuItem('Add negative phrase', () => {
-        negativePhrases.unshift({ text: '', weight: 1.0 });
-        syncNegativeParamsAndRender();
-      });
-
-      const closeMenu = () => {
-        menu.remove();
-        document.removeEventListener('click', closeMenu);
-      };
-      setTimeout(() => document.addEventListener('click', closeMenu), 0);
-    });
-
-  const negativeToggle = negativeHeader.append('xhtml:span')
-    .attr('class', 'prompt-toggle-icon')
-    .text('▾');
-
-  negativeHeader.append('xhtml:span')
-    .attr('class', 'prompt-section-title')
-    .text('Negative Prompt');
-
-  const negativeCountSpan = negativeHeader.append('xhtml:span')
-    .attr('class', 'prompt-count')
-    .text('(0)');
-
-  const negativePromptContainer = negativeSection.append('xhtml:div')
-    .attr('class', 'prompt-section-body');
-
-  const updateNegativeCount = () => {
-    negativeCountSpan.text(`(${negativePhrases.length})`);
-
-    if (!negativePhrases.length) {
-      negativeCollapsed = true;
-      negativePromptContainer.style('display', 'none');
-      negativeToggle.text('▸')
-        .style('color', '#d1d5db')
-        .style('cursor', 'default');
-    } else {
-      negativeToggle
-        .style('color', '#9ca3af')
-        .style('cursor', 'pointer');
-      negativeCollapsed = false;
-      negativePromptContainer.style('display', 'block');
-      negativeToggle.text('▾');
-    }
-  };
-
-  const syncNegativeParams = () => {
-    const updatedPrompt = negativePhrases
-      .filter(p => p.text.trim())
-      .map(p => `${p.text.trim()}:${p.weight.toFixed(1)}`)
-      .join(', ');
-
-    params.negative_prompt = updatedPrompt;
-    emit('update-node-parameters', d.id, { ...params });
-  };
-
-  const syncNegativeParamsAndRender = () => {
-    syncNegativeParams();
-    updateNegativeCount();
-    renderNegativePhraseRows();
-  };
-
-
-  const renderNegativePhraseRows = () => {
-    negativePromptContainer.selectAll('*').remove();
-
-    if (!negativePhrases.length) {
-      updateNegativeCount();
-      return;
-    }
-
-    updateNegativeCount();
-
-    negativePhrases.forEach((phrase, idx) => {
-      const row = negativePromptContainer.append('xhtml:div')
-        .attr('class', 'phrase-row');
-
-      // ⭐ phrase 行右键：新增 / 删除
-      row.on('contextmenu', (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-
-        const menu = d3.select('body').append('xhtml:div')
-          .style('position', 'absolute')
-          .style('left', `${ev.pageX}px`)
-          .style('top', `${ev.pageY}px`)
-          .style('background', 'white')
-          .style('border', '1px solid #e5e7eb')
-          .style('border-radius', '4px')
-          .style('padding', '4px 0')
-          .style('box-shadow', '0 2px 8px rgba(0,0,0,0.1)')
-          .style('z-index', '1000')
-          .style('min-width', '190px');
-
-        const addMenuItem = (label, onClick) => {
-          menu.append('xhtml:div')
-            .style('padding', '4px 12px')
-            .style('cursor', 'pointer')
-            .style('font-size', '12px')
-            .style('color', '#374151')
-            .on('mouseenter', function () { d3.select(this).style('background', '#f3f4f6') })
-            .on('mouseleave', function () { d3.select(this).style('background', 'transparent') })
-            .text(label)
-            .on('click', () => {
-              onClick();
-              menu.remove();
-            });
-        };
-
-        addMenuItem('Add negative phrase below', () => {
-          negativePhrases.splice(idx + 1, 0, { text: '', weight: 1.0 });
-          syncNegativeParamsAndRender();
-        });
-
-        addMenuItem('Delete this negative phrase', () => {
-          negativePhrases.splice(idx, 1);
-          syncNegativeParamsAndRender();
-        });
-
-        const closeMenu = () => {
-          menu.remove();
-          document.removeEventListener('click', closeMenu);
-        };
-        setTimeout(() => document.addEventListener('click', closeMenu), 0);
-      });
-
-      row.append('xhtml:input')
-        .attr('class', 'phrase-input')
-        .attr('type', 'text')
-        .attr('value', phrase.text)
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('input', function () {
-          negativePhrases[idx].text = this.value;
-          syncNegativeParams();
-        });
-
-      // row.append('xhtml:input')
-      //   .attr('class', 'weight-input')
-      //   .attr('type', 'number')
-      //   .attr('min', '0.0')
-      //   .attr('max', '1.9')
-      //   .attr('step', '0.1')
-      //   .attr('value', phrase.weight.toFixed(1))
-      //   .on('mousedown', ev => ev.stopPropagation())
-      //   .on('input', function () {
-      //     let val = parseFloat(this.value);
-      //     if (isNaN(val)) val = 1.0;
-      //     val = Math.min(1.9, Math.max(0.0, val));
-      //     this.value = val.toFixed(1);
-      //     negativePhrases[idx].weight = val;
-      //     syncNegativeParams();
-      //   });
-    });
-  };
-
-  renderNegativePhraseRows();
-
-
-  /* ---------- Input Images ---------- */
-  const inputImages = (d.assets && d.assets.input && d.assets.input.images) || [];
-  const imageSection = left.append('xhtml:div')
-    .attr('class', 'input-section');
-
-  // 【新增】定义图片和视频的扩展名（小写），用于判断类型
-  const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
-  const VIDEO_EXTS = ['mp4', 'mov', 'avi', 'mkv', 'flv', 'wmv'];
-
-  // 【新增】判断URL是图片还是视频的工具函数（不改动原有逻辑，仅新增）
-  const getMediaTypeFromUrl = (url) => {
-    // 处理带参数的URL（如 /view?filename=xxx.mp4）
-    const urlObj = new URL(url, window.location.origin);
-    let filename = '';
-    // 优先获取URL参数中的filename（和你后端的URL逻辑匹配）
-    if (urlObj.searchParams.has('filename')) {
-      filename = urlObj.searchParams.get('filename') || '';
-      // 解码URL中的文件名（处理空格、特殊字符）
-      filename = decodeURIComponent(filename);
-    } else {
-      // 兼容普通URL的情况
-      filename = urlObj.pathname.split('/').pop() || '';
-    }
-    const ext = filename.split('.').pop()?.toLowerCase() || '';
-    if (IMAGE_EXTS.includes(ext)) {
-      return 'image';
-    } else if (VIDEO_EXTS.includes(ext)) {
-      return 'video';
-    }
-    // 未知类型默认按图片处理
-    return 'image';
-  };
-
-  const hasImages = inputImages.length > 0;
-  let imagesCollapsed = false;
-  let grid = null;
-
-  const imageHeader = imageSection.append('xhtml:div')
-    .attr('class', 'prompt-section-header')
-    .on('mousedown', ev => ev.stopPropagation())
-    .on('click', ev => {
-      ev.stopPropagation();
-      if (!hasImages || !grid) return;
-      imagesCollapsed = !imagesCollapsed;
-      grid.style('display', imagesCollapsed ? 'none' : 'flex');
-      imageToggle.text(imagesCollapsed ? '▸' : '▾');
-    });
-
-  const imageToggle = imageHeader.append('xhtml:span')
-    .attr('class', 'prompt-toggle-icon')
-    .text(hasImages ? '▾' : '▸')
-    .style('color', hasImages ? '#4b5563' : '#d1d5db')
-    .style('cursor', hasImages ? 'pointer' : 'default');
-
-  // 【保留原有】小标题仍为 'Images'，不修改
-  imageHeader.append('xhtml:span')
-    .attr('class', 'prompt-section-title')
-    .text('Images');
-
-  // 【保留原有】计数逻辑不变
-  imageHeader.append('xhtml:span')
-    .attr('class', 'prompt-count')
-    .text(`(${inputImages.length})`);
-
-  if (hasImages) {
-    const shownImages = inputImages.slice(0, 2);
-    const imgCount = shownImages.length;
-
-    grid = imageSection.append('xhtml:div')
-      .attr('class', 'input-images-grid')
-      // 【保留原有】所有布局样式不变
-      .style('display', 'flex')
-      .style('flex-wrap', 'nowrap')
-      .style('gap', '4px')
-      .style('width', '100%')
-      .style('margin-top', '2px');
-
-    shownImages.forEach((url, idx) => {
-      // 【新增】获取当前URL的媒体类型（image/video）
-      const mediaType = getMediaTypeFromUrl(url);
-
-      const thumbWrapper = grid.append('xhtml:div')
-        .attr('class', 'input-image-thumb')
-        // 【保留原有】布局样式完全不变
-        .style('flex', imgCount === 1 ? '1 1 100%' : '1 1 0')
-        .style('min-width', imgCount === 1 ? '0' : '50%')
-        .style('height', '56px')
-        .style('border-radius', '4px')
-        .style('overflow', 'hidden')
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('click', ev => {
-          ev.stopPropagation();
-          // 【优化】预览时传递正确的媒体类型（不影响原有布局，仅优化预览逻辑）
-          emit('open-preview', url, mediaType);
-        });
-
-      // 【核心修改】根据类型动态渲染img或video，保留原有样式
-      if (mediaType === 'image') {
-        // 【保留原有】图片的渲染逻辑和样式完全不变
-        thumbWrapper.append('xhtml:img')
-          .attr('src', url)
-          .attr('alt', 'Input image')
-          .style('width', '100%')
-          .style('height', '100%')
-          .style('object-fit', 'cover')
-          .style('display', 'block');
-      } else if (mediaType === 'video') {
-        // 【新增】视频的渲染逻辑，样式和图片完全一致，添加自动播放属性
-        thumbWrapper.append('xhtml:video')
-          .attr('src', url)
-          .attr('alt', 'Input video')
-          // 【关键】配置视频自动播放（浏览器要求autoplay需配合muted）
-          .attr('autoplay', true) // 自动播放
-          .attr('muted', true)    // 静音（必加，否则多数浏览器会阻止自动播放）
-          .attr('loop', true)     // 循环播放（可选，根据需求调整）
-          .attr('playsinline', true) // 内联播放（移动端兼容）
-          // 【保留原有】样式和图片完全一致，保证布局不变
-          .style('width', '100%')
-          .style('height', '100%')
-          .style('object-fit', 'cover')
-          .style('display', 'block');
-      }
-    });
-  }
-
-  /* ---------- Parameters ---------- */
-  if (paramPairs.length) {
-    const paramSection = left.append('xhtml:div')
-      .attr('class', 'input-section');
-
-    // 折叠头部：小三角 + 标题
-    const header = paramSection.append('xhtml:div')
-      .attr('class', 'input-params-header');
-
-    const toggleIcon = header.append('xhtml:span')
-      .attr('class', 'input-params-toggle-icon')
-      .text('▾');  // 初始展开
-
-    header.append('xhtml:span')
-      .attr('class', 'input-params-title-text')
-      .text('Parameters');
-
-    // 折叠 body
-    const body = paramSection.append('xhtml:div')
-      .attr('class', 'input-params-body');
-
-    const grid = body.append('xhtml:div')
-      .attr('class', 'input-params-grid');
-
-    paramPairs.forEach(([key, val]) => {
-      const isNum = typeof val === 'number';
-      
-      // 1. 新增：参数名简写映射表（核心修改）
-      const paramAliasMap = {
-        'low_threshold': 'L-Thresh',    // 简写：低阈值
-        'high_threshold': 'H-Thresh',  // 简写：高阈值
-        'batch_size': 'batch',             // 保留你原有的 batch_size 简写
-        'camera_pose': 'camera'            // 新增：camera_pose 的简写（对应camera参数）
-      };
-      
-      // 2. 优先用映射表的简写，没有则按原逻辑处理（下划线转空格）
-      const labelName = paramAliasMap[key] || key.replace(/_/g, ' ');
-
-      const field = grid.append('xhtml:div')
-        .attr('class', 'input-param-field');
-
-      field.append('xhtml:div')
-        .attr('class', 'input-param-label')
-        .text(labelName);
-
-      // ========== 新增：camera_pose参数下拉菜单逻辑（开始） ==========
-      if (key === 'camera_pose') {
-        // 定义camera的下拉选项列表
-        const cameraOptions = [
-          'Pan Up', 'Pan Down', 'Pan Left', 'Pan Right', 'Zoom In', 'Zoom Out', 'Anti Clockwise (ACW)', 'ClockWise (CW)'
-        ];
-        // 创建下拉选择框，使用和输入框相同的类名保证样式一致
-        const select = field.append('xhtml:select')
-          .attr('class', 'input-param-input node-input')
-          .attr('data-key', key)
-          .style('appearance', 'none')
-          .style('padding-right', '10px') // 给自定义三角留右侧空间
-          .style('position', 'relative')
-          .style('width', '100%'); // 保证宽度和输入框一致
-        // 添加下拉选项
-        cameraOptions.forEach(optionText => {
-          const option = select.append('xhtml:option')
-            .style('font-size', '14px')
-            .attr('value', optionText)
-            .text(optionText);
-          // 设置默认选中项（如果当前值匹配）
-          if (val === optionText) {
-            option.attr('selected', 'selected');
-          }
-        });
-        // 阻止事件冒泡，和输入框保持一致的交互
-        select.on('mousedown', ev => ev.stopPropagation());
-
-        // ========== 新增：自定义下拉三角（解决尺寸和显示问题） ==========
-        const customTriangle = field.append('xhtml:span')
-          .attr('class', 'custom-select-triangle')
-          // 1. 调整三角尺寸：设置字体大小（可自行修改，比如10px）
-          .style('font-size', '8px')
-          // 2. 默认隐藏三角
-          .style('display', 'none')
-          // 3. 定位到下拉菜单右侧
-          .style('position', 'absolute')
-          .style('right', '8px')
-          .style('top', '50%')
-          .style('transform', 'translateY(-50%)')
-          // 4. 鼠标事件穿透，不影响下拉菜单点击
-          .style('pointer-events', 'none')
-          // 5. 三角符号（和原有一致）
-          .text('▾');
-
-        // ========== 新增：鼠标悬停/离开下拉菜单时控制三角显示/隐藏 ==========
-        // 给select添加鼠标进入事件
-        select.on('mouseenter', () => {
-          customTriangle.style('display', 'inline-block');
-        });
-        // 给select添加鼠标离开事件
-        select.on('mouseleave', () => {
-          customTriangle.style('display', 'none');
-        });
-      } else {
-        // ========== 原有输入框逻辑（保留不变） ==========
-        const input = field.append('xhtml:input')
-          .attr('class', 'input-param-input node-input')
-          .attr('data-key', key)  // 核心：保留原始key，不影响参数提交逻辑
-          .attr('type', isNum ? 'number' : 'text')
-          .attr('value', val);
-
-        // 可选优化：给 threshold 这类小数参数加步长（体验更好）
-        if (isNum && (key === 'low_threshold' || key === 'high_threshold'|| key === 'position')) {
-          input.attr('step', '0.01')  // 步长0.1，适配0.1/0.8这类值
-              .attr('min', '0.0')
-              .attr('max', '1.0'); // 阈值通常0-1之间，可按需调整
-        }
-
-        input.on('mousedown', ev => ev.stopPropagation());
-      }
-      // ========== 新增：camera_pose参数下拉菜单逻辑（结束） ==========
-    });
-
-    // 点击 header 折叠 / 展开
-    let paramsCollapsed = false;
-    header.on('click', () => {
-      paramsCollapsed = !paramsCollapsed;
-      body.style('display', paramsCollapsed ? 'none' : 'block');
-      toggleIcon.text(paramsCollapsed ? '▸' : '▾');
-    });
-  }
-
-
- /* ==================== 右侧 Output 列 ==================== */
-  /* ==================== 右侧 Output 列 ==================== */
-  const right = body.append('xhtml:div')
-    .attr('class', 'thin-scroll')
-    .style('flex', '1 1 0')
-    .style('min-width', '0')
-    .style('padding', '2px 4px')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('align-items', 'stretch')
-    .style('justify-content', 'flex-start')
-    .style('position', 'relative')
-    .style('overflow-y', 'auto')
-    .style('max-height', '100%');
-
-  // Output 头部 + 五角星按钮（样式跟左侧 Input 一致）
-  const outputHeader = right.append('xhtml:div')
-    .attr('class', 'io-header');
-
-  outputHeader.append('xhtml:span')
-    .attr('class', 'io-title')
-    .text('Output');
-
-  if (canAddToStitch) {
-    outputHeader.append('xhtml:div')
-      .attr('class', 'icon-circle-btn')
-      .text('↗')
-      .attr('title', 'Add to storyboard')
-      .on('mousedown', ev => ev.stopPropagation())
-            .on('click', ev => {
-        ev.stopPropagation();
-
-        // 如果有多选：把所有选中的 media 丢进 buffer
-        if (selectedMediaUrls.size > 0) {
-          selectedMediaUrls.forEach(url => {
-            const isVideoMedia = videoUrls.includes(url);
-            const mediaType = isVideoMedia ? 'video' : 'image';
-            emit('add-clip', d, url, mediaType);
-            console.log('[multi] add clip:', url, mediaType);
-          });
-          return;
-        }
-
-        // 如果没有任何选中，则 fallback：优先视频，否则第一张图片
-        const fallbackUrl = isVideo ? (videoUrls[0] || imageUrls[0]) : (imageUrls[0] || videoUrls[0]);
-        if (!fallbackUrl) return;
-
-        const fallbackType = videoUrls.includes(fallbackUrl) ? 'video' : 'image';
-        emit('add-clip', d, fallbackUrl, fallbackType);
-        console.log('[fallback] add clip:', fallbackUrl, fallbackType);
-      })
-
-      .on('mouseenter', function () {
-        d3.select(this).style('color', '#2563eb');
-      })
-      .on('mouseleave', function () {
-        d3.select(this).style('color', '#6b7280');
-      });
-  }
-
-  // 标题下方虚线
-  right.append('xhtml:div')
-    .attr('class', 'io-divider');
-
-  // 视频预览
-  if (videoUrls.length > 0) {
-    const videoContainer = right.append('xhtml:div')
-      .style('width', '100%')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('gap', '4px')
-      .style('margin-top', '4px');
-
-    videoUrls.forEach((url, index) => {
-      const wrapper = videoContainer.append('xhtml:div')
-        .attr('class', 'media-wrapper') // 新增类名，提升样式优先级
-        .attr('data-url', url)
-        .style('position', 'relative')
-        .style('width', '100%')
-        .style('height', '72px')          
-        .style('border-radius', '4px')
-        .style('overflow', 'hidden')
-        .style('pointer-events', 'auto')
-        .style('box-sizing', 'border-box')       // ⭐ 确保边框不改变整体宽度
-        .style('border', '2px solid transparent')// ⭐ 初始就预留 2px 边框空间
-        .on('click', function (ev) {
-          ev.stopPropagation();
-          ev.preventDefault();
-
-          // 记录“最后一次点击”的 url（做 fallback 用）
-          selectedMediaUrl = url;
-
-          // ⭐ 多选：toggle 这个 URL 是否在 Set 里
-          if (selectedMediaUrls.has(url)) {
-            selectedMediaUrls.delete(url);
-          } else {
-            selectedMediaUrls.add(url);
-          }
-
-          // 用统一函数，根据 selectedMediaUrls 更新所有 video 缩略图的边框 + 星标
-          updateMediaSelectionStyles(videoContainer, mediaVideoColor);
-
-          console.log('当前选中视频集合:', Array.from(selectedMediaUrls));
-        })
-
-        .on('dblclick', ev => {
-          ev.stopPropagation();
-          ev.preventDefault();
-          emit('open-preview', url, 'video');
-        });
-
-
-      const v = wrapper.append('xhtml:video')
-        .style('width', '100%')
-        .style('height', '100%')
-        .style('object-fit', 'cover')
-        .style('pointer-events', 'none')
-        .attr('muted', true)
-        .attr('playsinline', true)
-        .attr('preload', 'metadata');
-
-      const el = v.node();
-      el.autoplay = true;
-      el.loop = true;
-      el.muted = true;
-      el.playsInline = true;
-      el.src = url;
-
-      // ⭐ 右上角五角星标记
-      wrapper.append('xhtml:div')
-        .attr('class', 'media-select-badge')
-        .text('★')
-        .style('position', 'absolute')
-        .style('top', '4px')
-        .style('right', '4px')
-        .style('font-size', '11px')
-        .style('line-height', '1')
-        .style('padding', '2px 4px')
-        .style('border-radius', '999px')
-        .style('background', 'rgba(17,24,39,0.55)')
-        .style('color', '#e5e7eb')
-        .style('opacity', '0.25')   // 默认比较淡
-        .style('pointer-events', 'none'); // 避免挡住点击
-
-      // if (index === 0) {
-      //   selectedMediaUrl = url;
-      // }
-    });
-  }
-
-  // 图片预览
-  if (imageUrls.length > 0) {
-    const imgContainer = right.append('xhtml:div')
-      .style('width', '100%')
-      .style('display', 'flex')
-      .style('flex-direction', 'column')
-      .style('gap', '4px')
-      .style('margin-top', videoUrls.length ? '4px' : '4px');
-
-    imageUrls.forEach((url, index) => {
-      const wrapper = imgContainer.append('xhtml:div')
-        .attr('class', 'media-wrapper') // 新增类名
-        .attr('data-url', url)
-        .style('position', 'relative') 
-        .style('width', '100%')
-        .style('height', '72px')          
-        .style('border-radius', '4px')
-        .style('overflow', 'hidden')
-        .style('pointer-events', 'auto')
-        .style('box-sizing', 'border-box')            // ⭐
-        .style('border', '2px solid transparent')     // ⭐
-        .on('click', function (ev) {
-          ev.stopPropagation();
-          ev.preventDefault();
-
-          selectedMediaUrl = url;
-
-          if (selectedMediaUrls.has(url)) {
-            selectedMediaUrls.delete(url);
-          } else {
-            selectedMediaUrls.add(url);
-          }
-
-          updateMediaSelectionStyles(imgContainer, mediaImageColor);
-
-          console.log('当前选中图片集合:', Array.from(selectedMediaUrls));
-        })
-
-        .on('dblclick', ev => {
-          ev.stopPropagation();
-          ev.preventDefault();
-          emit('open-preview', url, 'image');
-        });
-
-      wrapper.append('xhtml:img')
-        .attr('src', url)
-        .attr('alt', `Output image ${index + 1}`)
-        .style('width', '100%')
-        .style('height', '100%')
-        .style('object-fit', 'cover')
-        .style('display', 'block')
-        .style('pointer-events', 'none');
-
-      // ⭐ 右上角五角星
-      wrapper.append('xhtml:div')
-        .attr('class', 'media-select-badge')
-        .text('★')
-        .style('position', 'absolute')
-        .style('top', '4px')
-        .style('right', '4px')
-        .style('font-size', '11px')
-        .style('line-height', '1')
-        .style('padding', '2px 4px')
-        .style('border-radius', '999px')
-        .style('background', 'rgba(17,24,39,0.55)')
-        .style('color', '#e5e7eb')
-        .style('opacity', '0.25')
-        .style('pointer-events', 'none');
-    });
-  }
-
-    function updateMediaSelectionStyles(container, color) {
-    container.selectAll('.media-wrapper').each(function () {
-      const wrapper = d3.select(this);
-      const url = wrapper.attr('data-url');
-      const badge = wrapper.select('.media-select-badge');
-
-      if (!url) return;
-
-      if (selectedMediaUrls.has(url)) {
-        // ✅ 选中：边框 + 星星用对应模态颜色
-        wrapper
-          .classed('media-selected', true)
-          .style('border-color', color);
-
-        badge
-          .style('opacity', '1')
-          .style('background', color)
-          .style('color', '#ffffff');
-      } else {
-        // 未选中：恢复默认
-        wrapper
-          .classed('media-selected', false)
-          .style('border-color', 'transparent');
-
-        badge
-          .style('opacity', '0.25')
-          .style('background', 'rgba(17,24,39,0.55)')
-          .style('color', '#e5e7eb');
-      }
-    });
-
-  }
-
-  // ======================================
-  // 新增：右侧 Output 区域最下方的自定义容器
-  // ======================================
-  const EntityBottomContainer = right.append('xhtml:div')
-    // 基础样式（适配现有布局）
-    .attr('x', 135)          // 对应卡片右半部分的起始 X 坐标
-    .attr('y', 130)          // 放在图片(通常高 80-90)的下方，请根据你实际图片 y 坐标调整
-    .attr('width', 115)      // 右半部分的宽度
-    .attr('height', 45)      // 给足够的高度放缩略图
-    .append('xhtml:div')     // 【关键】必须加 xhtml: 前缀
-    .attr('id', `entities-${d.node_id || d.id}`) // 【关键】确保这里的 ID 生成逻辑与 EntityCard.js 一致
-    .style('display', 'flex')
-    .style('flex-wrap', 'wrap')
-    .style('gap', '4px')
-    .style('padding', '2px')
-    .style('width', '100%')
-    .style('height', '100%')
-    .style('overflow', 'hidden')
-    .style('pointer-events', 'all'); // 确保能触发点击
-
-
-
-  /* ==================== 右下角拖拽：只改变节点高度 ==================== */
-  const resizeHandle = card.append('xhtml:div')
-    .attr('class', 'node-resize-handle')
-    .on('mousedown', (event) => {
-      event.stopPropagation();
-      event.preventDefault();
-
-      const startY = event.clientY;
-      const startHeight = d.calculatedHeight || parseFloat(fo.attr('height')) || 180;
-
-      d3.select('body').classed('node-card-resizing', true);
-
-      d3.select(window)
-        .on('mousemove.node-resize', (ev) => {
-          const dy = ev.clientY - startY;
-          const minHeight = 140;      // 给一个最小高度，防止太扁
-          const maxHeight = 480;      // 可以自行调大/调小
-          const newHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + dy));
-
-          d.calculatedHeight = newHeight;
-
-          // 更新 foreignObject 高度 & 垂直居中
-          fo
-            .attr('height', newHeight)
-            .attr('y', -newHeight / 2);
-
-          // 通知外层（如果你想把高度持久化）
-          if (emit) {
-            emit('resize-node-height', d.id, newHeight);
-          }
-        })
-        .on('mouseup.node-resize', () => {
-          d3.select(window).on('.node-resize', null);
-          d3.select('body').classed('node-card-resizing', false);
-        });
-    });
-
-  addTooltip(gEl, d);
+  renderUnifiedVisualNode(gEl, d, selectedIds, emit)
 }
 
 // Workflow Planning 辅助节点（AddWorkflow）：
 // 上：Fine-tune operation 文字细化；下：Input Images 图片参考
 function renderAddWorkflowNode(gEl, d, selectedIds, emit) {
-  const fo = gEl.append('foreignObject')
-    .attr('width', d.calculatedWidth)
-    .attr('height', d.calculatedHeight)
-    .attr('x', -d.calculatedWidth / 2)
-    .attr('y', -d.calculatedHeight / 2)
-    .style('overflow', 'visible')
-
-  const card = fo.append('xhtml:div')
-    .attr('class', 'node-card node-card-resizable')
-    .attr('data-node-category', getNodeCategory(d))
-    .style('width', '100%')
-    .style('height', '100%')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('border-width', '2px')
-    .style('border-radius', '8px')
-    .style('border-color', getNodeBorderColor(d))
-    .style('position', 'relative')
-    .style('cursor', 'pointer')
-    .style('background-color', '#ffffff')
-    .style('user-select', 'none')
-    .style('-webkit-user-select', 'none')
-
-  setCardSelected(card, d, isVisuallySelected(d, selectedIds))
-
-  card.on('click', ev => {
-    if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
-    ev.stopPropagation()
-    const selected = new Set(selectedIds)
-    const on = selected.has(d.id)
-    if (on) selected.delete(d.id)
-    else if (selected.size < 2) selected.add(d.id)
-    setCardSelected(card, d, !on)
-    emit('update:selectedIds', Array.from(selected))
-  })
-
-  card.on('mouseenter', () =>
-    card.selectAll('.add-clip-btn, .dots-container').style('opacity', '1')
-  ).on('mouseleave', () =>
-    card.selectAll('.add-clip-btn, .dots-container').style('opacity', '0')
-  )
-
-  // 顶部标题（节点名 + 折叠/复制/删除）
-  buildHeader(card, d)
-  addRightClickMenu(card, d, emit)
-
-  const body = card.append('xhtml:div')
-    .style('flex', '1 1 auto')
-    .style('min-height', '0')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('padding', '4px 6px')
-    .style('gap', '4px')
-
-  // ========= 上半部分：Fine-tune operation =========
-  const opSection = body.append('xhtml:div')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('gap', '2px')
-
-  const opHeader = opSection.append('xhtml:div')
-    .attr('class', 'io-header')
-    .style('align-items', 'center')
-
-  opHeader.append('xhtml:span')
-    .attr('class', 'io-label')
-    .text('Fine-tune operation')
-
-  // 右侧小 A 按钮：调用 Agent 选择工作流
-  const opAgentBtn = opHeader.append('xhtml:button')
-    .text('A')
-    .attr('class', 'icon-circle-btn')
-    .attr('title','agent button')
-    .on('mousedown', ev => ev.stopPropagation())
-    .on('mouseenter', function () {
-      d3.select(this)
-        .style('background', '#6b7280')
-        .style('color', '#ffffff')
-        .style('border-color', '#4b5563')
-    })
-    .on('mouseleave', function () {
-      d3.select(this)
-        .style('background', '#ffffff')
-        .style('color', '#6b7280')
-        .style('border-color', '#e5e7eb')
-    })
-
-  const opText = d.parameters?.text ||
-    d.parameters?.positive_prompt ||
-    d.parameters?.global_context ||
-    ''
-  // const hasMedia = !!(d.assets && d.assets.input && d.assets.input.images && d.assets.input.images.length > 0)
-  // const mediaUrl = hasMedia ? d.assets.input.images : ''
-  const opTextArea = opSection.append('xhtml:textarea')
-    .attr('class', 'thin-scroll')
-    .style('flex', '1 1 auto')
-    // .style('width', '100%')
-    .style('min-height', '48px')
-    .style('padding', '4px 6px')
-    .style('font-size', '10px')
-    .style('color', '#374151')
-    .style('background-color', '#f9fafb')
-    .style('border', '1px solid #e5e7eb')
-    .style('border-radius', '6px')
-    .style('resize', 'none')
-    .style('outline', 'none')
-    .style('font-family', 'inherit')
-    .attr('placeholder', 'Refine the operation details for this workflow...')
-    .property('value', opText)
-    .on('mousedown', ev => ev.stopPropagation())
-
-  opTextArea.on('blur', function () {
-    const val = d3.select(this).property('value') || ''
-    if (!d.parameters) d.parameters = {}
-    d.parameters.text = val
-    d.parameters.positive_prompt = val
-    emit('update-node-parameters', d.id, d.parameters)
-  })
-
-  // Agent 按钮点击：调用后端 /api/agents/process
-  opAgentBtn.on('click', ev => {
-    ev.stopPropagation()
-    clearPrevAgentContext();
-    // ========== 修改2：点击Agent时动态获取最新的图片URL ==========
-    // 优先取previewImages（拖拽/上传的最新图片），其次取d.assets
-    const currentImages = previewImages.length > 0 
-      ? previewImages 
-      : (d.assets?.input?.images || []);
-    // 取第一张图片URL（Agent接口通常只传单张），如果是数组转字符串
-    const mediaUrl = currentImages.length > 0 
-      ? (typeof currentImages[0] === 'string' ? currentImages[0] : '') 
-      : '';
-      
-    const payload = {
-      user_input: opTextArea.property('value') || '',
-      node_id: d.id,
-      image_url: mediaUrl || '',
-      workflow_context: {
-        current_workflow: d.module_id,
-        parent_nodes: d.originalParents || []
-      }
-    }
-
-    fetch('/api/agents/process', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    })
-      .then(res => res.json())
-      .then(data => {
-        console.log('Agent处理结果 (Workflow Planning):', data)
-        const agentContext = {
-            global_context: data.global_context || '',
-            intent: data.intent || '',
-            selected_workflow: data.selected_workflow || '',
-            knowledge_context: data.knowledge_context || '',
-            image_caption: data.image_caption || '',
-            style: data.style || ''
-          };
-          // 存储到共享工具中（关键步骤）
-          setPrevAgentContext(agentContext);
-
-        const rawWorkflowId = data.selected_workflow || ''
-        const workflowId = rawWorkflowId.replace('.json', '')
-        const workflow_title = data.workflow_title
-
-        import('@/lib/useWorkflowForm.js').then(({ workflowParameters }) => {
-          if (!workflowParameters) {
-            console.error('workflowParameters 未正确导入')
-            return
-          }
-
-          const paramDefinitions = workflowParameters[workflowId] || []
-          console.log(`paramDefinitions`,paramDefinitions)
-          const defaultParams = paramDefinitions.reduce((obj, param) => {
-            obj[param.id] = param.defaultValue
-            return obj
-          }, {})
-
-          const updatedParams = {
-            ...defaultParams,
-            positive_prompt: data.message?.positive || defaultParams.positive_prompt || '',
-            negative_prompt: data.message?.negative || defaultParams.negative_prompt || '',
-            text:data.message?.text || ''
-          }
-
-          d.parameters = updatedParams
-          console.log(`add workflow agent`,d.parameters)
-          emit('refresh-node', d.id, workflowId, d.parameters, workflow_title)
-        })
-      })
-      .catch(err => console.error('调用Agent失败:', err))
-  })
-
-  // ========= 下半部分：Input Images =========
-  const imgSection = body.append('xhtml:div')
-    .style('display', 'flex')
-    .style('flex-direction', 'column')
-    .style('gap', '2px')
-
-  const imgHeader = imgSection.append('xhtml:div')
-    .attr('class', 'io-header')
-    .style('align-items', 'center')
-
-  imgHeader.append('xhtml:span')
-    .attr('class', 'io-label')
-    .text('Input Images')
-
-  // 右侧黄色小圆点 + 号按钮
-  const addImgBtn = imgHeader.append('xhtml:button')
-    .text('+')
-    .attr('class', 'icon-circle-btn')
-    .attr('title','add image')
-    .on('mousedown', ev => ev.stopPropagation())
-
-  // 预览区域：固定高度，水平滚动
-  const previewRow = imgSection.append('xhtml:div')
-    .style('flex', '0 0 auto')
-    .style('height', '54px')
-    .style('border-radius', '6px')
-    .style('background', '#f9fafb')
-    .style('border', '1px dashed #e5e7eb')
-    .style('padding', '4px')
-    .style('display', 'flex')
-    .style('align-items', 'center')
-    .style('gap', '4px')
-    .style('overflow-x', 'auto')
-
-  function resolveDroppedWorkflowImage(dragData) {
-    if (!dragData) return ''
-
-    return (
-      dragData.mediaUrl ||
-      dragData.originalUrl ||
-      dragData.fullUrl ||
-      dragData.imageUrl ||
-      dragData.url ||
-      dragData.thumbnailUrl ||
-      dragData.clip?.mediaUrl ||
-      dragData.clip?.originalUrl ||
-      dragData.clip?.fullUrl ||
-      dragData.clip?.imageUrl ||
-      dragData.clip?.url ||
-      dragData.clip?.thumbnailUrl ||
-      ''
-    )
-  }
-
-  function isLikelyImageUrl(url = '') {
-    const lower = String(url).toLowerCase()
-    return (
-      lower.startsWith('data:image/') ||
-      lower.startsWith('blob:') ||
-      lower.includes('.png') ||
-      lower.includes('.jpg') ||
-      lower.includes('.jpeg') ||
-      lower.includes('.webp') ||
-      lower.includes('.gif') ||
-      lower.includes('.bmp') ||
-      lower.includes('.svg')
-    )
-  }
-
-  function isWorkflowBufferImageDrag(dragData, resolvedUrl) {
-    const dragType =
-      dragData?.type ||
-      dragData?.clip?.type ||
-      ''
-
-    if (dragType === 'image') return true
-    if (dragData?.__dragSource === 'buffer' && isLikelyImageUrl(resolvedUrl)) return true
-    return isLikelyImageUrl(resolvedUrl)
-  }
-
-  function dataURLToBlob(dataURL) {
-    const arr = dataURL.split(',')
-    const mime = arr[0].match(/:(.*?);/)?.[1] || 'image/png'
-    const bstr = atob(arr[1] || '')
-    let n = bstr.length
-    const u8arr = new Uint8Array(n)
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n)
-    }
-    return new Blob([u8arr], { type: mime })
-  }
-
-  // ========== 新增：预览区域拖拽监听 ==========
-  // 1. 允许拖拽进入
-  previewRow.on('dragover', (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    previewRow.style.border = '1px solid #3B82F6';
-    previewRow.style.background = '#f0f9ff';
-  });
-
-  // 2. 拖拽离开：恢复样式
-  previewRow.on('dragleave', (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-    if (!previewRow.node().contains(ev.relatedTarget)) {
-      previewRow.style.border = '1px dashed #e5e7eb';
-      previewRow.style.background = '#f9fafb';
-    }
-  });
-
-  // 3. 拖拽放下：接收Canvas图片并添加到输入列表
-  previewRow.on('drop', async (ev) => {
-    ev.preventDefault();
-    ev.stopPropagation();
-
-    previewRow.style.border = '1px dashed #e5e7eb';
-    previewRow.style.background = '#f9fafb';
-
-    const rawJson = ev.dataTransfer.getData('application/json');
-    const rawText = ev.dataTransfer.getData('text/plain');
-    const rawUri = ev.dataTransfer.getData('text/uri-list');
-
-    let dragData = null;
-
-    try {
-      dragData = JSON.parse(rawJson || rawText || '{}');
-    } catch (err) {
-      dragData = { url: rawText || rawUri || '' };
-    }
-
-    const resolvedUrl = resolveDroppedWorkflowImage(dragData);
-
-    if (!resolvedUrl || !isWorkflowBufferImageDrag(dragData, resolvedUrl)) {
-      return;
-    }
-
-    // 初始化 previewImages
-    if (!Array.isArray(previewImages)) {
-      previewImages = (d.assets && d.assets.input && d.assets.input.images)
-        ? [...d.assets.input.images]
-        : [];
-    }
-
-    // 去重
-    if (previewImages.includes(resolvedUrl)) {
-      return;
-    }
-
-    previewImages.push(resolvedUrl);
-
-    // 同步到节点数据
-    if (!d.assets) d.assets = {};
-    if (!d.assets.input) d.assets.input = {};
-    d.assets.input.images = [...previewImages];
-
-    // 立即更新前端预览
-    renderPreview();
-
-    // 如果是 canvas 导出的 dataURL，继续保留原来 upload-media 行为
-    if (resolvedUrl.startsWith('data:image/')) {
-      const blob = dataURLToBlob(resolvedUrl);
-      const file = new File(
-        [blob],
-        dragData.filename || dragData.name || 'buffer-drop.png',
-        { type: blob.type || 'image/png' }
-      );
-      emit('upload-media', d.id, [file]);
-      return;
-    }
-
-    // 如果是 buffer 中已有的普通 URL，不强制上传，先作为输入引用使用
-    // 这样 workflow 节点能立即显示并参与后续 agent / workflow 逻辑
-  })
-
-  function createTransparentDragImage() {
-    const canvas = document.createElement('canvas')
-    canvas.width = 1
-    canvas.height = 1
-    return canvas
-  }
-
-  function buildWorkflowImageDragPayload(url) {
-    return {
-      __dragSource: 'workflow',
-      type: 'image',
-      url,
-      imageUrl: url,
-      mediaUrl: url,
-      originalUrl: url,
-      fullUrl: url,
-      thumbnailUrl: url,
-      name: 'workflow-image',
-      filename: 'workflow-image'
-    }
-  }  
-
-  // ========== 辅助函数：DataURL转Blob ==========
-  function dataURLToBlob(dataURL) {
-    const arr = dataURL.split(',');
-    const mime = arr[0].match(/:(.*?);/)[1];
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new Blob([u8arr], { type: mime });
-  }
-
-  // ========== 修改4：调整previewImages初始化顺序（移到拖拽逻辑前） ==========
-  // 原有预览图片逻辑（调整位置到拖拽监听后、renderPreview前）
-  let previewImages = (d.assets && d.assets.input && d.assets.input.images)
-    ? [...d.assets.input.images]
-    : []
-
-  const renderPreview = () => {
-    previewRow.selectAll('*').remove()
-
-    if (!previewImages.length) {
-      previewRow.append('xhtml:div')
-        .style('font-size', '10px')
-        .style('color', '#9ca3af')
-        .text('Click + to upload reference images for this plan.')
-      return
-    }
-    previewImages.forEach(url => {
-      const wrapper = previewRow.append('xhtml:div')
-        .style('flex', '0 0 auto')
-        .style('height', '100%')
-        .style('border-radius', '4px')
-        .style('overflow', 'hidden')
-        .style('background', 'transparent')
-        .style('display', 'flex')
-        .style('align-items', 'center')
-        .style('justify-content', 'center')
-        .on('mousedown', ev => ev.stopPropagation())
-        .on('click', ev => {
-          ev.stopPropagation()
-          emit('open-preview', url, 'image')
-        })
-
-      const img = wrapper.append('xhtml:img')
-        .attr('src', url)
-        .attr('alt', 'Input image')
-        .attr('draggable', true)
-        .style('height', '100%')
-        .style('width', 'auto')
-        .style('object-fit', 'contain')
-        .style('display', 'block')
-        .style('background', 'transparent')
-        .style('background-color', 'transparent')
-        .style('cursor', 'grab')
-
-      img.on('dragstart', function (ev) {
-        ev.stopPropagation()
-
-        const payload = buildWorkflowImageDragPayload(url)
-        const json = JSON.stringify(payload)
-
-        ev.dataTransfer.effectAllowed = 'copy'
-        ev.dataTransfer.setData('application/json', json)
-        ev.dataTransfer.setData('text/plain', json)
-        ev.dataTransfer.setData('text/uri-list', url)
-
-        // 关键：不要让浏览器自动截图预览区背景
-        const transparentImg = createTransparentDragImage()
-        ev.dataTransfer.setDragImage(transparentImg, 0, 0)
-      })
-
-      img.on('dragend', function () {
-        d3.select(this).style('cursor', 'grab')
-      })
-    })
-
-  }
-
-  renderPreview()
-
-  // 原有文件上传逻辑（不变）
-  const hiddenInput = imgSection.append('xhtml:input')
-    .attr('type', 'file')
-    .attr('accept', 'image/*, video/*')
-    .attr('multiple', true)
-    .style('display', 'none')
-    .on('change', function () {
-      const files = Array.from(this.files || [])
-      if (!files.length) return
-
-      files.forEach(file => {
-        const url = URL.createObjectURL(file)
-        previewImages.push(url)
-      })
-      console.log(`file:`,files,d.id)
-
-      emit('upload-media', d.id, files)
-      renderPreview()
-
-      this.value = ''
-    })
-
-  addImgBtn.on('click', ev => {
-    ev.stopPropagation()
-    const inp = hiddenInput.node()
-    if (inp) inp.click()
-  })
-
-  addTooltip(gEl, d)
+  renderUnifiedVisualNode(gEl, d, selectedIds, emit)
 }
 // --- 新增：渲染复合节点 ---
 function renderCompositeNode(gEl, d, selectedIds, emit) {
@@ -3436,7 +1621,7 @@ function renderCompositeNode(gEl, d, selectedIds, emit) {
   left.append('xhtml:div')
     .style('font-size', '10px')
     .style('color', '#7c3aed')
-    .text('Temporary view group')
+    .text('Locally composed overlap state')
 
   header.append('xhtml:div')
     .style('font-size', '10px')
@@ -3527,7 +1712,7 @@ function renderCompositeNode(gEl, d, selectedIds, emit) {
     .style('font-size', '10px')
     .style('font-weight', '700')
     .style('cursor', 'pointer')
-    .text('Ungroup')
+    .text('Detach')
     .on('click', ev => {
       ev.stopPropagation()
       emit('ungroup-node', d.id)
@@ -3656,7 +1841,7 @@ function renderMediaContent(container, data) {
             });
         };
 
-        addMenuItem('Add Intent Draft', () => {
+        addMenuItem('Create Child Draft', () => {
           // 和原来小加号的行为保持一致
           emit('create-card', d, 'AddText', 'util');
         });
