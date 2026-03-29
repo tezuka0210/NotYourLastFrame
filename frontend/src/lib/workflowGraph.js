@@ -220,6 +220,70 @@ function isVisuallySelected(nodeData, selectedIds = []) {
 }
 
 
+function normalizeSelectedIds(selectedIds = []) {
+  return Array.from(new Set((Array.isArray(selectedIds) ? selectedIds : []).filter(Boolean)))
+}
+
+function getSelectionState(svgElement, fallbackSelectedIds = []) {
+  if (!svgElement) return normalizeSelectedIds(fallbackSelectedIds)
+  if (!Array.isArray(svgElement.__workflowSelectedIds)) {
+    svgElement.__workflowSelectedIds = normalizeSelectedIds(fallbackSelectedIds)
+  }
+  return normalizeSelectedIds(svgElement.__workflowSelectedIds)
+}
+
+function commitSelectionState(svgElement, nextSelectedIds, emit) {
+  const normalized = normalizeSelectedIds(nextSelectedIds)
+  if (svgElement) {
+    svgElement.__workflowSelectedIds = normalized
+  }
+  if (typeof emit === 'function') {
+    emit('update:selectedIds', normalized)
+  }
+  if (svgElement) {
+    try {
+      updateSelectionStyles(svgElement, normalized)
+    } catch (err) {
+      console.warn('updateSelectionStyles failed:', err)
+    }
+  }
+  return normalized
+}
+
+function clearAllSelections(svgElement, emit) {
+  return commitSelectionState(svgElement, [], emit)
+}
+
+function toggleSelectionForNode(svgElement, node, fallbackSelectedIds, emit, options = {}) {
+  if (!node || !node.id) return getSelectionState(svgElement, fallbackSelectedIds)
+  const {
+    maxCount = null,
+    allowComposite = true,
+  } = options
+
+  if (!allowComposite && node.isComposite) {
+    return getSelectionState(svgElement, fallbackSelectedIds)
+  }
+
+  let selected = new Set(getSelectionState(svgElement, fallbackSelectedIds))
+  if (selected.has(node.id)) {
+    selected.delete(node.id)
+  } else {
+    if (typeof maxCount === 'number' && maxCount > 0 && selected.size >= maxCount) {
+      selected = new Set(Array.from(selected).slice(-(maxCount - 1)))
+    }
+    selected.add(node.id)
+  }
+  return commitSelectionState(svgElement, Array.from(selected), emit)
+}
+
+function syncSelectionStateFromProps(svgElement, selectedIds = []) {
+  if (!svgElement) return normalizeSelectedIds(selectedIds)
+  svgElement.__workflowSelectedIds = normalizeSelectedIds(selectedIds)
+  return svgElement.__workflowSelectedIds
+}
+
+
 const lineGenerator = d3.line()
   .x(d => d.x)
   .y(d => d.y)
@@ -533,6 +597,7 @@ export function renderTree(
   }
 
   const wrapper = d3.select(svgElement)
+  syncSelectionStateFromProps(svgElement, selectedIds)
 
   // 优先用外部传进来的 viewState；如果没有，就从 d3 的内部 zoom 状态恢复
   let savedView = viewState
@@ -751,8 +816,7 @@ export function renderTree(
   const svgDom = svg.node()
   svgDom.addEventListener('click', (ev) => {
     if (ev.target === svgDom) {
-      svgElement.querySelectorAll('.node-card').forEach(el => el.classList.remove('selected'))
-      emit('update:selectedIds', [])
+      clearAllSelections(svgElement, emit)
     }
   })
 
@@ -836,6 +900,12 @@ export function renderTree(
       .style('min-width', '0')
       .style('cursor', 'text')
       .text(initialLabel)
+
+    title.on('click', (ev) => {
+      if (isEditingTitle) return
+      ev.stopPropagation()
+      toggleSelectionForNode(svgElement, d, selectedIds, emit, { allowComposite: true, maxCount: 2 })
+    })
 
     title.on('dblclick', (ev) => {
       ev.stopPropagation()
@@ -1565,14 +1635,10 @@ export function renderTree(
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button, img, video, input, textarea, select')) return
       ev.stopPropagation()
-      const selected = new Set(selectedIds)
-      const on = selected.has(d.id)
-      if (on) selected.delete(d.id)
-      else if (selected.size < 2) selected.add(d.id)
-      setCardSelected(card, d, !on)
-      emit('update:selectedIds', Array.from(selected))
+      toggleSelectionForNode(svgElement, d, selectedIds, emit, { allowComposite: true, maxCount: 2 })
     })
     buildHeader(card, d)
+    addResizeHandle(card, d, svgElement, allNodesData)
     const body = card.append('xhtml:div').style('flex', '1 1 auto').style('min-height', '0').style('display', 'flex').style('flex-direction', 'column').style('gap', '6px').style('padding', '6px').style('overflow-y', 'auto').style('overflow-x', 'hidden').style('width', '100%').style('box-sizing', 'border-box')
     buildFunctionSection(body, d, emit)
     buildAssetsSection(body, d, emit, state)
@@ -1591,14 +1657,10 @@ export function renderTree(
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button, input, textarea, select')) return
       ev.stopPropagation()
-      const selected = new Set(selectedIds)
-      const on = selected.has(d.id)
-      if (on) selected.delete(d.id)
-      else if (selected.size < 2) selected.add(d.id)
-      setCardSelected(card, d, !on)
-      emit('update:selectedIds', Array.from(selected))
+      toggleSelectionForNode(svgElement, d, selectedIds, emit, { allowComposite: true, maxCount: 2 })
     })
     buildHeader(card, d)
+    addResizeHandle(card, d, svgElement, allNodesData)
     const body = card.append('xhtml:div').style('flex', '1 1 auto').style('min-height', '0').style('display', 'flex').style('flex-direction', 'column').style('gap', '6px').style('padding', '6px').style('overflow-y', 'auto').style('overflow-x', 'hidden').style('width', '100%').style('box-sizing', 'border-box')
     buildFunctionSection(body, d, emit)
     buildAssetsSection(body, d, emit, state)
@@ -1661,12 +1723,7 @@ export function renderTree(
     card.on('click', ev => {
       if (ev.target && ev.target.closest && ev.target.closest('button')) return
       ev.stopPropagation()
-      const selected = new Set(selectedIds)
-      const on = selected.has(d.id)
-      if (on) selected.delete(d.id)
-      else if (selected.size < 2) selected.add(d.id)
-      setCardSelected(card, d, !on)
-      emit('update:selectedIds', Array.from(selected))
+      toggleSelectionForNode(svgElement, d, selectedIds, emit, { allowComposite: true, maxCount: 2 })
     })
 
     card.on('mouseenter', () =>
@@ -1677,6 +1734,7 @@ export function renderTree(
 
     // 顶部 header（节点标题 + 折叠/复制/删除）
     buildHeader(card, d)
+    addResizeHandle(card, d, svgElement, allNodesData)
     addRightClickMenu(card, d, emit)
 
     // ====== 主体：单栏，对话框风格 ======
@@ -1821,15 +1879,12 @@ function renderCompositeNode(gEl, d, selectedIds, emit) {
   card.on('click', ev => {
     if (ev.target && ev.target.closest && ev.target.closest('button, img, video')) return
     ev.stopPropagation()
-    const selected = new Set(selectedIds)
-    const on = selected.has(d.id)
-    if (on) selected.delete(d.id)
-    else if (selected.size < 2) selected.add(d.id)
-    emit('update:selectedIds', Array.from(selected))
+    toggleSelectionForNode(svgElement, d, selectedIds, emit, { allowComposite: true, maxCount: 2 })
   })
 
   // 统一标题栏
   buildHeader(card, d)
+  addResizeHandle(card, d, svgElement, allNodesData)
 
   const body = card.append('xhtml:div')
     .style('flex', '1 1 auto')
@@ -2047,10 +2102,7 @@ function renderMediaContent(container, data) {
       gEl.style('cursor', 'pointer')
         .on('click', (ev) => {
           ev.stopPropagation();
-          const selected = new Set(selectedIds);
-          if (selected.has(d.id)) selected.delete(d.id);
-          else if (selected.size < 2) selected.add(d.id);
-          emit('update:selectedIds', Array.from(selected));
+          toggleSelectionForNode(svgElement, d, selectedIds, emit, { allowComposite: true, maxCount: 2 });
         });
 
       // 右键：弹出菜单 → Add Intent Draft
@@ -2152,23 +2204,37 @@ function renderMediaContent(container, data) {
 
 function addResizeHandle(card, node, svgElement, allNodesData) {
   const handle = card.append('xhtml:div')
+    .attr('class', 'node-resize-handle')
     .style('position', 'absolute')
     .style('width', '12px')
     .style('height', '12px')
-    .style('right', '2px')
-    .style('bottom', '2px')
+    .style('right', '4px')
+    .style('bottom', '4px')
     .style('cursor', 'ns-resize')
     .style('background', '#9ca3af')
-    .style('border-radius', '50%');
+    .style('clip-path', 'polygon(100% 0, 0 100%, 100% 100%)')
+    .style('opacity', '0')
+    .style('transition', 'opacity 120ms ease')
+    .style('z-index', '3');
+
+  card.on('mouseenter.resize-handle', () => handle.style('opacity', '0.65'))
+  card.on('mouseleave.resize-handle', () => handle.style('opacity', '0'))
 
   handle.on('mousedown', function (event) {
     event.stopPropagation();
+    event.preventDefault();
     const startY = event.clientY;
-    const startHeight = node.calculatedHeight;
+    const startHeight = node.calculatedHeight || 120;
+    const fo = card.node()?.parentNode ? d3.select(card.node().parentNode) : null;
 
     function onMouseMove(ev) {
       const dy = ev.clientY - startY;
-      node.calculatedHeight = Math.max(60, startHeight + dy);
+      const nextHeight = Math.max(60, startHeight + dy);
+      node.calculatedHeight = nextHeight;
+      if (fo) {
+        fo.attr('height', nextHeight).attr('y', -nextHeight / 2);
+      }
+      card.style('height', `${nextHeight}px`);
       updateVisibility(svgElement, allNodesData);
     }
 
@@ -2184,19 +2250,15 @@ function addResizeHandle(card, node, svgElement, allNodesData) {
 
 // === 最终修正版选择与合并逻辑 ===
 // 点击或方框选择节点
-function toggleNodeSelection(node, selectedIds, emit) {
-  if (node.isComposite) return; // composite 节点不允许选中
-  const selected = new Set(selectedIds);
-  if (selected.has(node.id)) selected.delete(node.id);
-  else selected.add(node.id);
-  emit('update:selectedIds', Array.from(selected));
+function toggleNodeSelection(node, selectedIds, emit, svgElement = null) {
+  return toggleSelectionForNode(svgElement, node, selectedIds, emit, { allowComposite: true, maxCount: 2 });
 }
 
 // 合并当前选择
-function mergeSelectedNodes(allNodesData, selectedIds, emit) {
-  // 只合并普通节点，不包括已有 composite 节点
+function mergeSelectedNodes(allNodesData, selectedIds, emit, svgElement = null) {
+  const effectiveSelectedIds = getSelectionState(svgElement, selectedIds);
   const nodesToMerge = allNodesData.filter(
-    n => selectedIds.includes(n.id) && !n.isComposite
+    n => effectiveSelectedIds.includes(n.id)
   );
   if (nodesToMerge.length < 2) return;
 
@@ -2210,9 +2272,7 @@ function mergeSelectedNodes(allNodesData, selectedIds, emit) {
 
   allNodesData.push(newComposite);
 
-  // 清空选择状态，保证下一次选择独立
-  emit('update:selectedIds', []);
+  clearAllSelections(svgElement, emit);
 
-  // 刷新树
   emit('refresh-tree', allNodesData);
 }
