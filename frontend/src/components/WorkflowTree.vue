@@ -1,36 +1,41 @@
 <template>
-  <div id="chart-wrapper" class="flex-1 min-h-0 workflow-tree-shell">
-    <svg ref="svgContainer" class="workflow-svg"></svg>
+  <div
+    id="chart-wrapper"
+    class="flex-1 min-h-0 workflow-tree-shell"
+  >
+    <svg ref="svgContainer" class="w-full h-full"></svg>
 
     <div v-if="showToolbar" class="workflow-toolbar">
-      <div class="toolbar-status" :class="{ active: overlapMode }">
+      <div class="toolbar-status" :class="{ active: boxSelectMode }">
         {{ toolbarStatusText }}
       </div>
-
-      <div class="toolbar-actions" v-if="!overlapMode">
-        <button class="toolbar-btn toolbar-btn-primary" @click.stop="startOverlapMode">
-          Create Overlap
+      <div class="toolbar-actions">
+        <button
+          class="toolbar-btn toolbar-btn-primary"
+          :disabled="!canMerge"
+          @click.stop="mergeSelectedNodes(localSelectedIds)"
+        >
+          Overlap
         </button>
-        <button v-if="focusId" class="toolbar-btn" @click.stop="clearFocus">
-          Clear Focus
-        </button>
-      </div>
-
-      <div class="toolbar-actions" v-else>
-        <button class="toolbar-btn toolbar-btn-primary" :disabled="!canMerge" @click.stop="confirmOverlap">
-          Confirm Overlap
-        </button>
-        <button class="toolbar-btn" :disabled="localSelectedIds.length === 0" @click.stop="clearSelection">
+        <button
+          v-if="localSelectedIds.length > 0"
+          class="toolbar-btn"
+          @click.stop="clearSelection"
+        >
           Clear
         </button>
-        <button class="toolbar-btn" @click.stop="startBoxSelectMode">
-          {{ localSelectedIds.length > 0 ? 'Reselect' : 'Box Select' }}
+        <button
+          class="toolbar-btn"
+          @click.stop="startBoxSelectMode"
+        >
+          {{ boxSelectMode ? 'Reselect' : 'Box' }}
         </button>
-        <button v-if="boxSelectMode" class="toolbar-btn" @click.stop="stopBoxSelectMode">
+        <button
+          v-if="boxSelectMode"
+          class="toolbar-btn"
+          @click.stop="stopBoxSelectMode"
+        >
           Done
-        </button>
-        <button class="toolbar-btn" @click.stop="cancelOverlapMode">
-          Cancel
         </button>
       </div>
     </div>
@@ -75,15 +80,12 @@ const emit = defineEmits([
   'refresh-node',
   'upload-media',
   'update-node-media-from-parent',
-  'regenerate-node',
-  'resize-node-height'
+  'regenerate-node'
 ])
 
 const svgContainer = ref(null)
 
 const boxSelectMode = ref(false)
-const overlapMode = ref(false)
-const focusId = ref(null)
 const selecting = ref(false)
 const selectionStarted = ref(false)
 const selectBox = ref({ left: 0, top: 0, width: 0, height: 0 })
@@ -97,14 +99,14 @@ const layoutConfig = ref({
   colors: {
     image: null,
     video: null,
-    audio: null,
-    overlap: null
+    audio: null
   }
 })
 
 const localGroups = ref([])
 const renderedNodes = ref([])
 const localSelectedIds = ref([...(props.selectedIds || [])])
+const nodeSizeOverrides = ref({})
 
 const ignoreBackgroundClearUntil = ref(0)
 
@@ -113,26 +115,22 @@ function markIgnoreBackgroundClear(ms = 250) {
 }
 
 const canMerge = computed(() => localSelectedIds.value.length >= 2)
-const focusedNode = computed(() => renderedNodes.value.find(n => n.id === focusId.value) || null)
-const focusedNodeLabel = computed(() => {
-  const n = focusedNode.value
-  if (!n) return 'No focused state'
-  return n.displayName || n.label || n.module_id || n.id
-})
 
 const showToolbar = computed(() => {
-  return overlapMode.value || !!focusId.value
+  return boxSelectMode.value || localSelectedIds.value.length > 0
 })
 
 const toolbarStatusText = computed(() => {
   const count = localSelectedIds.value.length
-  if (overlapMode.value) {
-    if (count > 0) return `${count} source${count > 1 ? 's' : ''}`
-    return 'Select sources'
+
+  if (boxSelectMode.value) {
+    return count > 0 ? `${count} source${count > 1 ? 's' : ''}` : 'Select sources'
   }
-  if (focusId.value) {
-    return focusedNodeLabel.value
+
+  if (count > 0) {
+    return `${count} selected`
   }
+
   return ''
 })
 
@@ -163,33 +161,27 @@ function isTypingTarget(target) {
   )
 }
 
-function getInteractionState() {
-  return {
-    focusId: focusId.value,
-    overlapMode: overlapMode.value,
-    overlapSelectedIds: [...localSelectedIds.value]
-  }
-}
-
-function applyVisualState() {
-  if (svgContainer.value) {
-    updateSelectionStyles(svgContainer.value, localSelectedIds.value, getInteractionState())
-  }
-}
-
 function applyLocalSelectedIds(ids = []) {
   const nextIds = [...ids]
   if (sameIds(localSelectedIds.value, nextIds)) return
+
   localSelectedIds.value = nextIds
-  applyVisualState()
+
+  if (svgContainer.value) {
+    updateSelectionStyles(svgContainer.value, nextIds)
+  }
 }
 
 function commitSelectedIds(ids = []) {
   const nextIds = [...ids]
+
   if (!sameIds(localSelectedIds.value, nextIds)) {
     localSelectedIds.value = nextIds
-    applyVisualState()
+    if (svgContainer.value) {
+      updateSelectionStyles(svgContainer.value, nextIds)
+    }
   }
+
   if (!sameIds(props.selectedIds || [], nextIds)) {
     emit('update:selectedIds', nextIds)
   }
@@ -200,28 +192,7 @@ function clearSelection() {
   stopBoxSelectMode()
 }
 
-function clearFocus() {
-  focusId.value = null
-  applyVisualState()
-}
-
-function startOverlapMode() {
-  overlapMode.value = true
-  if (focusId.value && !localSelectedIds.value.includes(focusId.value)) {
-    commitSelectedIds([focusId.value])
-  }
-  resetSelectionBox()
-}
-
-function cancelOverlapMode() {
-  overlapMode.value = false
-  stopBoxSelectMode()
-  commitSelectedIds([])
-  applyVisualState()
-}
-
 function startBoxSelectMode() {
-  if (!overlapMode.value) return
   boxSelectMode.value = true
   resetSelectionBox()
 }
@@ -235,19 +206,24 @@ function resetSelectionBox() {
   selecting.value = false
   selectionStarted.value = false
   selectBox.value = { left: 0, top: 0, width: 0, height: 0 }
+
   document.body.style.userSelect = ''
   document.body.style.webkitUserSelect = ''
 }
 
 function getCurrentViewState() {
   if (!svgContainer.value) return null
+
   const svg = d3.select(svgContainer.value)
   const zoomContainer = svg.select('.zoom-container')
   if (zoomContainer.empty()) return null
+
   const transform = zoomContainer.attr('transform')
   if (!transform) return null
+
   const scaleMatch = transform.match(/scale\(([^)]+)\)/)
   const translateMatch = transform.match(/translate\(([^,]+),([^)]+)\)/)
+
   if (scaleMatch && translateMatch) {
     return {
       k: parseFloat(scaleMatch[1]),
@@ -263,46 +239,77 @@ function mergeNodeAssets(assetsList) {
     input: { images: [], videos: [], audio: [] },
     output: { images: [], videos: [], audio: [] }
   }
+
   assetsList.forEach(assets => {
     if (!assets) return
+
     if (assets.input) {
       mergedAssets.input.images = [...mergedAssets.input.images, ...(assets.input.images || [])]
       mergedAssets.input.videos = [...mergedAssets.input.videos, ...(assets.input.videos || [])]
       mergedAssets.input.audio = [...mergedAssets.input.audio, ...(assets.input.audio || [])]
     }
+
     if (assets.output) {
       mergedAssets.output.images = [...mergedAssets.output.images, ...(assets.output.images || [])]
       mergedAssets.output.videos = [...mergedAssets.output.videos, ...(assets.output.videos || [])]
       mergedAssets.output.audio = [...mergedAssets.output.audio, ...(assets.output.audio || [])]
     }
   })
+
   return mergedAssets
 }
 
 function buildCompositeSummary(nodes) {
-  const summary = { image: 0, video: 0, audio: 0, text: 0 }
+  const summary = {
+    image: 0,
+    video: 0,
+    audio: 0,
+    text: 0
+  }
+
   nodes.forEach(node => {
     const assets = node.assets || {}
     const output = assets.output || {}
-    summary.image += (output.images || []).filter(p => !String(p).includes('.mp4') && !String(p).includes('subfolder=video')).length
-    summary.video += (output.videos || []).length + (output.images || []).filter(p => String(p).includes('.mp4') || String(p).includes('subfolder=video')).length
+
+    summary.image += (output.images || []).filter(
+      p => !String(p).includes('.mp4') && !String(p).includes('subfolder=video')
+    ).length
+
+    summary.video +=
+      (output.videos || []).length +
+      (output.images || []).filter(
+        p => String(p).includes('.mp4') || String(p).includes('subfolder=video')
+      ).length
+
     summary.audio += (output.audio || []).length
+
     const text = node.parameters?.text || node.parameters?.positive_prompt || ''
     if (text && String(text).trim()) summary.text += 1
   })
+
   return summary
+}
+
+function parentSignature(node) {
+  return JSON.stringify([...(node.originalParents || [])].sort())
 }
 
 function buildCompositeNode(group, groupedNodes, allNodes) {
   const selectedSet = new Set(group.nodeIds)
-  const externalParents = uniq(groupedNodes.flatMap(n => n.originalParents || []).filter(pid => !selectedSet.has(pid)))
+
+  const externalParents = uniq(
+    groupedNodes.flatMap(n => n.originalParents || []).filter(pid => !selectedSet.has(pid))
+  )
+
   const downstreamIds = uniq(
     allNodes
       .filter(n => !selectedSet.has(n.id))
       .filter(n => (n.originalParents || []).some(pid => selectedSet.has(pid)))
       .map(n => n.id)
   )
+
   const summary = buildCompositeSummary(groupedNodes)
+
   return {
     id: group.id,
     originalParents: externalParents.length ? externalParents : null,
@@ -322,39 +329,59 @@ function buildCompositeNode(group, groupedNodes, allNodes) {
     label: `Overlap · ${groupedNodes.length}`,
     summary,
     assets: mergeNodeAssets(groupedNodes.map(n => n.assets || {})),
-    linkColor: '#b195f4',
+    linkColor: '#8b5cf6',
     _collapsed: false
   }
 }
 
 function applyLocalGroups(baseNodes) {
   let nextNodes = (baseNodes || []).map(n => ({ ...n }))
+
   localGroups.value.forEach(group => {
     const selectedSet = new Set(group.nodeIds)
     const groupedNodes = nextNodes.filter(n => selectedSet.has(n.id))
+
     if (groupedNodes.length < 2) return
+
     const compositeNode = buildCompositeNode(group, groupedNodes, nextNodes)
     const firstIndex = Math.max(0, nextNodes.findIndex(n => selectedSet.has(n.id)))
+
     const rewiredNodes = nextNodes
       .filter(n => !selectedSet.has(n.id))
       .map(n => {
         const parents = n.originalParents || []
         if (!parents.some(pid => selectedSet.has(pid))) return n
+
         return {
           ...n,
-          originalParents: uniq(parents.map(pid => (selectedSet.has(pid) ? group.id : pid)))
+          originalParents: uniq(
+            parents.map(pid => (selectedSet.has(pid) ? group.id : pid))
+          )
         }
       })
+
     rewiredNodes.splice(Math.min(firstIndex, rewiredNodes.length), 0, compositeNode)
     nextNodes = rewiredNodes
   })
+
   return nextNodes
 }
 
+function applyNodeSizeOverrides(nodes) {
+  return (nodes || []).map(n => {
+    const ov = nodeSizeOverrides.value[n.id]
+    if (!ov) return n
+    return { ...n, calculatedHeight: ov.height ?? n.calculatedHeight, manualHeight: ov.height ?? n.manualHeight }
+  })
+}
+
 function syncRenderedTree(nextSelectedIds = localSelectedIds.value || []) {
-  renderedNodes.value = applyLocalGroups(props.nodes)
+  renderedNodes.value = applyNodeSizeOverrides(applyLocalGroups(props.nodes))
+
   if (!svgContainer.value) return
+
   const viewState = getCurrentViewState()
+
   renderTree(
     svgContainer.value,
     renderedNodes.value,
@@ -362,134 +389,90 @@ function syncRenderedTree(nextSelectedIds = localSelectedIds.value || []) {
     graphEmit,
     workflowTypes,
     viewState,
-    layoutConfig.value,
-    getInteractionState()
+    layoutConfig.value
   )
-}
-
-function buildNodeMap(nodes = []) {
-  return new Map((nodes || []).map(n => [n.id, n]))
-}
-
-function getAncestorSet(nodeId, nodeMap, visited = new Set()) {
-  if (!nodeId || visited.has(nodeId)) return new Set()
-  visited.add(nodeId)
-  const node = nodeMap.get(nodeId)
-  const result = new Set()
-  const parents = node?.originalParents || []
-  parents.forEach(pid => {
-    result.add(pid)
-    getAncestorSet(pid, nodeMap, visited).forEach(a => result.add(a))
-  })
-  return result
-}
-
-function hasSharedAncestorContext(nodes, allNodes) {
-  if (!nodes || nodes.length < 2) return false
-  const nodeMap = buildNodeMap(allNodes)
-  const ancestorSets = nodes.map(n => getAncestorSet(n.id, nodeMap))
-  let intersection = new Set(ancestorSets[0])
-  for (let i = 1; i < ancestorSets.length; i++) {
-    intersection = new Set([...intersection].filter(id => ancestorSets[i].has(id)))
-  }
-  return intersection.size > 0
-}
-
-function confirmOverlap() {
-  mergeSelectedNodes(localSelectedIds.value)
-}
-
-function mergeSelectedNodes(selectedNodeIds) {
-  const selectedNodes = renderedNodes.value.filter(node => selectedNodeIds.includes(node.id))
-  const validNodes = selectedNodes.filter(node => !node.isComposite && node.module_id !== 'Init')
-  if (validNodes.length < 2) return
-  if (!hasSharedAncestorContext(validNodes, props.nodes)) {
-    alert('Overlap is currently limited to states that share a compatible branch context.')
-    return
-  }
-  const groupId = `composite_${Date.now()}_${Math.floor(Math.random() * 1000)}`
-  localGroups.value.push({
-    id: groupId,
-    nodeIds: validNodes.map(n => n.id),
-    created_at: new Date().toISOString()
-  })
-  overlapMode.value = false
-  stopBoxSelectMode()
-  focusId.value = groupId
-  commitSelectedIds([])
-  syncRenderedTree([])
-}
-
-function ungroupNodes(compositeNodeId) {
-  const targetGroup = localGroups.value.find(g => g.id === compositeNodeId)
-  if (!targetGroup) return
-  const restoredIds = [...targetGroup.nodeIds]
-  localGroups.value = localGroups.value.filter(g => g.id !== compositeNodeId)
-  focusId.value = restoredIds[0] || null
-  commitSelectedIds([])
-  syncRenderedTree([])
-}
-
-function toggleOverlapNode(nodeId) {
-  if (!overlapMode.value) return
-  const next = new Set(localSelectedIds.value)
-  if (next.has(nodeId)) next.delete(nodeId)
-  else next.add(nodeId)
-  markIgnoreBackgroundClear()
-  commitSelectedIds(Array.from(next))
 }
 
 function handleKeyDown(e) {
   if (isTypingTarget(e.target)) return
+
   if (e.key === 'b' || e.key === 'B') {
     e.preventDefault()
-    if (!overlapMode.value) startOverlapMode()
-    if (boxSelectMode.value) stopBoxSelectMode()
-    else startBoxSelectMode()
+
+    if (boxSelectMode.value) {
+      stopBoxSelectMode()
+    } else {
+      startBoxSelectMode()
+    }
     return
   }
-  if ((e.key === 'g' || e.key === 'G') && overlapMode.value && localSelectedIds.value.length >= 2) {
+
+  if ((e.key === 'g' || e.key === 'G') && localSelectedIds.value.length >= 2) {
     e.preventDefault()
-    confirmOverlap()
+    mergeSelectedNodes(localSelectedIds.value)
     return
   }
+
   if (e.key === 'Escape') {
     e.preventDefault()
-    if (overlapMode.value) cancelOverlapMode()
-    else clearFocus()
+    clearSelection()
   }
 }
 
 function handleKeyUp() {}
 
 function handleSvgMouseDown(e) {
-  if (!overlapMode.value || !boxSelectMode.value || e.button !== 0) return
+  if (!boxSelectMode.value || e.button !== 0) return
+
   const target = e.target
-  const clickedOnNode = !!(target && target.closest && target.closest('.node, foreignObject, .node-card, button, input, textarea, select'))
+  const clickedOnNode = !!(
+    target &&
+    target.closest &&
+    target.closest('.node, foreignObject, .node-card, button, input, textarea, select')
+  )
+
   if (clickedOnNode) return
+
   e.preventDefault()
   e.stopPropagation()
-  if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation()
+  if (typeof e.stopImmediatePropagation === 'function') {
+    e.stopImmediatePropagation()
+  }
+
   selectStart.value = { x: e.clientX, y: e.clientY }
-  selectBox.value = { left: e.clientX, top: e.clientY, width: 0, height: 0 }
+  selectBox.value = {
+    left: e.clientX,
+    top: e.clientY,
+    width: 0,
+    height: 0
+  }
+
   selecting.value = true
   selectionStarted.value = false
+
   document.body.style.userSelect = 'none'
   document.body.style.webkitUserSelect = 'none'
 }
 
 function handleWindowMouseMove(e) {
   if (!selecting.value) return
+
   e.preventDefault()
   e.stopPropagation()
+
   const dx = e.clientX - selectStart.value.x
   const dy = e.clientY - selectStart.value.y
+
   if (!selectionStarted.value) {
-    if (Math.hypot(dx, dy) < BOX_DRAG_THRESHOLD) return
+    if (Math.hypot(dx, dy) < BOX_DRAG_THRESHOLD) {
+      return
+    }
     selectionStarted.value = true
   }
+
   const x = e.clientX
   const y = e.clientY
+
   selectBox.value.left = Math.min(x, selectStart.value.x)
   selectBox.value.top = Math.min(y, selectStart.value.y)
   selectBox.value.width = Math.abs(x - selectStart.value.x)
@@ -498,38 +481,86 @@ function handleWindowMouseMove(e) {
 
 function handleMouseUp(e) {
   if (!selecting.value) return
+
   if (e) {
     e.preventDefault()
     e.stopPropagation()
   }
+
   const hadRealDrag = selectionStarted.value
   const selectedNodeIds = hadRealDrag ? getNodesInSelectionBox() : []
+
   resetSelectionBox()
+
   if (!hadRealDrag) return
+
   if (selectedNodeIds.length > 0) {
     markIgnoreBackgroundClear()
     commitSelectedIds(selectedNodeIds)
   } else {
     commitSelectedIds([])
   }
+
   boxSelectMode.value = false
 }
 
 function getNodesInSelectionBox() {
   if (!svgContainer.value) return []
+
   const box = selectBox.value
   const selectedIds = []
   const svgEl = svgContainer.value
+
   const nodeElements = d3.select(svgEl).selectAll('.node[data-id]').nodes()
+
   nodeElements.forEach(el => {
     const rect = el.getBoundingClientRect()
-    const isInBox = rect.left < box.left + box.width && rect.right > box.left && rect.top < box.top + box.height && rect.bottom > box.top
+
+    const isInBox =
+      rect.left < box.left + box.width &&
+      rect.right > box.left &&
+      rect.top < box.top + box.height &&
+      rect.bottom > box.top
+
     if (isInBox) {
       const nodeId = el.getAttribute('data-id')
       if (nodeId) selectedIds.push(nodeId)
     }
   })
+
   return selectedIds
+}
+
+function mergeSelectedNodes(selectedNodeIds) {
+  const selectedNodes = renderedNodes.value.filter(node =>
+    selectedNodeIds.includes(node.id)
+  )
+
+  const validNodeIds = uniq(selectedNodes.map(node => node.id))
+  if (validNodeIds.length < 2) return
+
+  const groupId = `composite_${Date.now()}_${Math.floor(Math.random() * 1000)}`
+
+  localGroups.value.push({
+    id: groupId,
+    nodeIds: validNodeIds,
+    created_at: new Date().toISOString()
+  })
+
+  stopBoxSelectMode()
+  commitSelectedIds([groupId])
+  syncRenderedTree([groupId])
+}
+
+function ungroupNodes(compositeNodeId) {
+  const targetGroup = localGroups.value.find(g => g.id === compositeNodeId)
+  if (!targetGroup) return
+
+  const restoredIds = [...targetGroup.nodeIds]
+  localGroups.value = localGroups.value.filter(g => g.id !== compositeNodeId)
+
+  commitSelectedIds(restoredIds)
+  syncRenderedTree(restoredIds)
 }
 
 const graphEmit = (event, ...args) => {
@@ -537,24 +568,33 @@ const graphEmit = (event, ...args) => {
     ungroupNodes(...args)
     return
   }
-  if (event === 'focus-node') {
-    focusId.value = args[0] || null
-    applyVisualState()
-    return
-  }
-  if (event === 'toggle-overlap-node') {
-    toggleOverlapNode(args[0])
-    return
-  }
+
   if (event === 'update:selectedIds') {
     const nextIds = Array.isArray(args[0]) ? args[0] : []
-    if (nextIds.length === 0 && Date.now() < ignoreBackgroundClearUntil.value) {
+
+    if (
+      nextIds.length === 0 &&
+      Date.now() < ignoreBackgroundClearUntil.value
+    ) {
       ignoreBackgroundClearUntil.value = 0
       return
     }
+
     commitSelectedIds(nextIds)
     return
   }
+
+  if (event === 'resize-node-height') {
+    const [nodeId, nextHeight] = args
+    if (!nodeId || typeof nextHeight !== 'number') return
+    nodeSizeOverrides.value = {
+      ...nodeSizeOverrides.value,
+      [nodeId]: { height: nextHeight }
+    }
+    syncRenderedTree(localSelectedIds.value)
+    return
+  }
+
   if (event === 'delete-node') {
     const nodeId = args[0]
     const found = renderedNodes.value.find(n => n.id === nodeId)
@@ -562,8 +602,8 @@ const graphEmit = (event, ...args) => {
       ungroupNodes(nodeId)
       return
     }
-    if (focusId.value === nodeId) focusId.value = null
   }
+
   emit(event, ...args)
 }
 
@@ -575,22 +615,25 @@ function handleLayoutUpdated(event) {
     colors: {
       image: detail.colors?.image ?? layoutConfig.value.colors.image,
       video: detail.colors?.video ?? layoutConfig.value.colors.video,
-      audio: detail.colors?.audio ?? layoutConfig.value.colors.audio,
-      overlap: detail.colors?.overlap ?? layoutConfig.value.colors.overlap
+      audio: detail.colors?.audio ?? layoutConfig.value.colors.audio
     }
   }
+
   syncRenderedTree(localSelectedIds.value)
 }
 
 onMounted(() => {
   if (!svgContainer.value) return
+
   window.addEventListener('t2v-layout-updated', handleLayoutUpdated)
   window.addEventListener('keydown', handleKeyDown)
   window.addEventListener('keyup', handleKeyUp)
+
   const svgEl = svgContainer.value
   svgEl.addEventListener('mousedown', handleSvgMouseDown, true)
   window.addEventListener('mousemove', handleWindowMouseMove)
   window.addEventListener('mouseup', handleMouseUp)
+
   syncRenderedTree(localSelectedIds.value)
 })
 
@@ -598,7 +641,11 @@ onBeforeUnmount(() => {
   window.removeEventListener('t2v-layout-updated', handleLayoutUpdated)
   window.removeEventListener('keydown', handleKeyDown)
   window.removeEventListener('keyup', handleKeyUp)
-  if (svgContainer.value) svgContainer.value.removeEventListener('mousedown', handleSvgMouseDown, true)
+
+  if (svgContainer.value) {
+    svgContainer.value.removeEventListener('mousedown', handleSvgMouseDown, true)
+  }
+
   window.removeEventListener('mousemove', handleWindowMouseMove)
   window.removeEventListener('mouseup', handleMouseUp)
 })
@@ -607,10 +654,9 @@ watch(
   () => props.nodes,
   (nodes) => {
     const nodeIdSet = new Set((nodes || []).map(n => n.id))
-    localGroups.value = localGroups.value.filter(group => group.nodeIds.every(id => nodeIdSet.has(id)))
-    if (focusId.value && !nodeIdSet.has(focusId.value) && !localGroups.value.some(g => g.id === focusId.value)) {
-      focusId.value = null
-    }
+    localGroups.value = localGroups.value.filter(group =>
+      group.nodeIds.every(id => nodeIdSet.has(id))
+    )
     syncRenderedTree(localSelectedIds.value)
   },
   { immediate: true }
@@ -621,12 +667,16 @@ watch(
   (ids) => {
     const nextIds = [...(ids || [])]
     if (sameIds(localSelectedIds.value, nextIds)) return
+
     localSelectedIds.value = nextIds
-    applyVisualState()
+
+    if (!svgContainer.value) return
+    updateSelectionStyles(svgContainer.value, nextIds)
   },
   { immediate: true }
 )
 </script>
+
 
 <style scoped>
 .workflow-tree-shell {
@@ -639,12 +689,6 @@ watch(
   overflow: hidden;
 }
 
-.workflow-svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
 .workflow-toolbar {
   position: absolute;
   top: 10px;
@@ -655,12 +699,12 @@ watch(
   align-items: center;
   gap: 6px;
   max-width: calc(100% - 24px);
-  padding: 5px 7px;
+  padding: 4px 6px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.92);
   border: none;
-  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.12);
-  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(6px);
   flex-wrap: nowrap;
 }
 
@@ -671,15 +715,15 @@ watch(
   border-radius: 999px;
   background: #f3f4f6;
   border: none;
-  color: #374151;
-  font-size: 10px;
+  color: #4b5563;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
   line-height: 1.2;
 }
 
 .toolbar-status.active {
-  background: rgba(59, 130, 246, 0.14);
+  background: rgba(59, 130, 246, 0.10);
   color: #1d4ed8;
 }
 
@@ -694,9 +738,9 @@ watch(
   border: none;
   background: transparent;
   color: #374151;
-  padding: 5px 9px;
+  padding: 5px 8px;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
   cursor: pointer;
@@ -704,7 +748,7 @@ watch(
 }
 
 .toolbar-btn:hover:not(:disabled) {
-  background: #eef2ff;
+  background: #f3f4f6;
   color: #111827;
 }
 
@@ -714,19 +758,19 @@ watch(
 }
 
 .toolbar-btn-primary {
-  background: #111827;
+  background: #1f2937;
   color: #ffffff;
 }
 
 .toolbar-btn-primary:hover:not(:disabled) {
-  background: #0f172a;
+  background: #111827;
   color: #ffffff;
 }
 
 .selection-box {
   position: fixed;
-  border: 1px solid rgba(59, 130, 246, 0.75);
-  background: rgba(59, 130, 246, 0.12);
+  border: 1px solid rgba(59, 130, 246, 0.65);
+  background: rgba(59, 130, 246, 0.10);
   pointer-events: none;
   z-index: 9999;
   border-radius: 6px;
@@ -745,14 +789,12 @@ svg {
   }
 
   .toolbar-status {
-    max-width: 160px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    display: none;
   }
 
   .toolbar-btn {
-    padding: 4px 6px;
-    font-size: 9px;
+    padding: 5px 7px;
+    font-size: 10px;
   }
 }
 </style>
