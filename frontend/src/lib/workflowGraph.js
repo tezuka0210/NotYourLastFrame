@@ -1188,6 +1188,13 @@ export function renderTree(
     }
   }
 
+  function shouldShowPromptInput(node) {
+    const p = node?.parameters || {}
+    const hasPositive = typeof p.positive_prompt === 'string' && p.positive_prompt.trim() !== ''
+    const hasNegative = typeof p.negative_prompt === 'string' && p.negative_prompt.trim() !== ''
+    return !(hasPositive || hasNegative)
+  }
+
   function syncPromptState(node, next, emit) {
     if (!node.parameters) node.parameters = {}
     node.parameters.text = next.note || ''
@@ -1562,6 +1569,7 @@ function addMediaBoxResizeHandle(box, boxState) {
 
     let noteArea
     let noteAreaWrap
+    let showPromptInput = shouldShowPromptInput(node)
     let positivePhrases = parseCueString(promptState.positive || promptState.note)
     let negativePhrases = parseCueString(promptState.negative)
     let positiveContainer, negativeContainer, positiveCount, negativeCount
@@ -1663,6 +1671,11 @@ function addMediaBoxResizeHandle(box, boxState) {
       buildTinyButton(controls, 'A', 'Agent assist', async () => {
         try {
           clearPrevAgentContext()
+
+          if (noteAreaWrap) {
+            noteAreaWrap.style('display', 'none')
+          }
+
           const mediaUrl = inputMediaResolver ? inputMediaResolver() : (getInputMediaUrls(node)[0] || '')
           const payload = {
             user_input: noteArea.property('value') || '',
@@ -1695,9 +1708,6 @@ function addMediaBoxResizeHandle(box, boxState) {
 
         syncPromptStateFromUI()
 
-        if (noteAreaWrap) {
-          noteAreaWrap.style('display', 'none')
-        }
         } catch (err) {
           console.error('Agent assist failed:', err)
         }
@@ -1717,7 +1727,7 @@ function addMediaBoxResizeHandle(box, boxState) {
     })
 
     noteAreaWrap = sec.content.append('xhtml:div')
-      .style('display', 'block')
+      .style('display', showPromptInput ? 'block' : 'none')
       .style('width', '100%')
 
     noteArea = noteAreaWrap.append('xhtml:textarea')
