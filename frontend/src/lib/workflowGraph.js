@@ -1231,21 +1231,161 @@ export function renderTree(
       .on('mousedown', ev => ev.stopPropagation())
       .on('click', function (ev) { ev.stopPropagation(); if (onClick) onClick(ev) })
   }
+function getMediaBoxState(node, boxKey = 'default') {
+  if (!node.__mediaBoxState) node.__mediaBoxState = {}
 
-  function applyMediaBoxStyle(sel) {
-    return sel
-      .style('display', 'flex')
-      .style('flex-wrap', 'wrap')
-      .style('align-content', 'flex-start')
-      .style('gap', '6px')
-      .style('overflow-x', 'hidden')
-      .style('padding', '6px')
-      .style('height', '42px')
-      .style('width', '100%')
-      .style('box-sizing', 'border-box')
-      .style('border', '1px dashed #e5e7eb')
-      .style('border-radius', '8px')
+  if (!node.__mediaBoxState[boxKey]) {
+    node.__mediaBoxState[boxKey] = {
+      height: 96,      // 初始面板高度
+      tileMin: 64      // 初始最小缩略图尺寸
+    }
   }
+
+  return node.__mediaBoxState[boxKey]
+}
+
+function applyMediaBoxStyle(sel, boxState) {
+  return sel
+    .style('position', 'relative')
+    .style('width', '100%')
+    .style('height', `${boxState.height}px`)
+    .style('box-sizing', 'border-box')
+    .style('border', '1px dashed #d1d5db')
+    .style('border-radius', '8px')
+    .style('background', '#ffffff')
+    .style('overflow', 'hidden')
+}
+
+function buildMediaGrid(box, boxState) {
+  return box.append('xhtml:div')
+    .attr('class', 'media-box-grid')
+    .style('position', 'absolute')
+    .style('inset', '6px')
+    .style('display', 'grid')
+    .style('grid-template-columns', `repeat(auto-fill, minmax(${boxState.tileMin}px, 1fr))`)
+    .style('grid-auto-rows', '1fr')
+    .style('gap', '6px')
+    .style('align-content', 'start')
+    .style('width', 'auto')
+    .style('height', 'auto')
+    .style('overflow', 'hidden')
+}
+
+function updateMediaGridLayout(box, boxState) {
+  box.style('height', `${boxState.height}px`)
+  box.select('.media-box-grid')
+    .style('grid-template-columns', `repeat(auto-fill, minmax(${boxState.tileMin}px, 1fr))`)
+}
+
+function addMediaBoxResizeHandle(box, boxState) {
+  const handle = box.append('xhtml:div')
+    .attr('class', 'media-box-resize-handle')
+    .style('position', 'absolute')
+    .style('right', '4px')
+    .style('bottom', '4px')
+    .style('width', '12px')
+    .style('height', '12px')
+    .style('background', '#9ca3af')
+    .style('clip-path', 'polygon(100% 0, 0 100%, 100% 100%)')
+    .style('cursor', 'nwse-resize')
+    .style('opacity', '0')
+    .style('transition', 'opacity 120ms ease')
+    .style('z-index', '4')
+
+  box
+    .on('mouseenter.media-box-handle', () => handle.style('opacity', '0.65'))
+    .on('mouseleave.media-box-handle', () => handle.style('opacity', '0'))
+
+  handle.on('mousedown', function (event) {
+    event.preventDefault()
+    event.stopPropagation()
+
+    const startY = event.clientY
+    const startHeight = boxState.height
+    const startTileMin = boxState.tileMin
+
+    function onMouseMove(ev) {
+      const dy = ev.clientY - startY
+
+      // 让高度和 tile 尺寸一起变化，交互会更自然
+      boxState.height = Math.max(72, Math.min(220, startHeight + dy))
+      boxState.tileMin = Math.max(48, Math.min(120, startTileMin + dy * 0.35))
+
+      updateMediaGridLayout(box, boxState)
+    }
+
+    function onMouseUp() {
+          window.removeEventListener('mousemove', onMouseMove)
+          window.removeEventListener('mouseup', onMouseUp)
+        }
+
+        window.addEventListener('mousemove', onMouseMove)
+        window.addEventListener('mouseup', onMouseUp)
+      })
+    }
+
+    function createMediaBox(parent, node, boxKey, options = {}) {
+      const {
+        makeDroppable = false,
+        onDropMedia = null
+      } = options
+
+      const boxState = getMediaBoxState(node, boxKey)
+      const box = parent.append('xhtml:div')
+      applyMediaBoxStyle(box, boxState)
+
+      const grid = buildMediaGrid(box, boxState)
+      addMediaBoxResizeHandle(box, boxState)
+
+      if (makeDroppable) {
+        box
+          .on('dragover', ev => {
+            ev.preventDefault()
+            ev.stopPropagation()
+            box.style('border-color', '#94a3b8').style('background', '#f8fafc')
+          })
+          .on('dragleave', ev => {
+            ev.preventDefault()
+            ev.stopPropagation()
+            box.style('border-color', '#d1d5db').style('background', '#ffffff')
+          })
+          .on('drop', ev => {
+            ev.preventDefault()
+            ev.stopPropagation()
+            box.style('border-color', '#d1d5db').style('background', '#ffffff')
+            if (!onDropMedia) return
+
+            const rawJson = ev.dataTransfer.getData('application/json')
+            const rawText = ev.dataTransfer.getData('text/plain')
+            let dragData = null
+
+            try {
+              dragData = JSON.parse(rawJson || rawText || '{}')
+            } catch (e) {
+              dragData = { url: rawText || '' }
+            }
+
+            const resolvedUrl =
+              dragData?.mediaUrl ||
+              dragData?.originalUrl ||
+              dragData?.fullUrl ||
+              dragData?.imageUrl ||
+              dragData?.url ||
+              dragData?.thumbnailUrl ||
+              dragData?.clip?.mediaUrl ||
+              dragData?.clip?.originalUrl ||
+              dragData?.clip?.fullUrl ||
+              dragData?.clip?.imageUrl ||
+              dragData?.clip?.url ||
+              dragData?.clip?.thumbnailUrl ||
+              ''
+
+            if (resolvedUrl) onDropMedia(resolvedUrl, dragData)
+          })
+      }
+
+      return { box, grid, boxState }
+    }
 
   function renderThumbRow(parent, urls, options = {}) {
     const {
@@ -1254,61 +1394,67 @@ export function renderTree(
       onStageClick = null,
       makeDroppable = false,
       onDropMedia = null,
-      boxed = false
+      boxed = false,
+      node = null,
+      boxKey = 'default'
     } = options
 
     const safeUrls = Array.isArray(urls) ? urls : []
 
-    const row = parent.append('xhtml:div')
-
-    if (makeDroppable || boxed) {
-      applyMediaBoxStyle(row)
-    } else {
-      row
+    // 非 boxed 保留普通模式
+    if (!makeDroppable && !boxed) {
+      const row = parent.append('xhtml:div')
         .style('display', 'flex')
         .style('flex-wrap', 'wrap')
-        .style('align-content', 'flex-start')
         .style('gap', '6px')
-        .style('overflow-x', 'hidden')
-        .style('padding', '2px 0')
-        .style('width', '100%')
-        .style('box-sizing', 'border-box')
+
+      if (!safeUrls.length) {
+        row.append('xhtml:div')
+          .style('font-size', '10px')
+          .style('color', '#9ca3af')
+          .text(emptyText)
+        return row
+      }
+
+      safeUrls.forEach(url => {
+        const type = deriveMediaKind(url)
+        const wrap = row.append('xhtml:div')
+          .style('width', '56px')
+          .style('height', '56px')
+        if (type === 'image') {
+          wrap.append('xhtml:img').attr('src', url).style('width', '100%').style('height', '100%').style('object-fit', 'cover')
+        }
+      })
+
+      return row
     }
 
-    if (makeDroppable) {
-      row
-        .on('dragover', ev => { ev.preventDefault(); ev.stopPropagation(); row.style('border-color', '#94a3b8').style('background', '#f8fafc') })
-        .on('dragleave', ev => { ev.preventDefault(); ev.stopPropagation(); row.style('border-color', '#e5e7eb').style('background', 'transparent') })
-        .on('drop', ev => {
-          ev.preventDefault(); ev.stopPropagation();
-          row.style('border-color', '#e5e7eb').style('background', 'transparent')
-          if (!onDropMedia) return
-          const rawJson = ev.dataTransfer.getData('application/json')
-          const rawText = ev.dataTransfer.getData('text/plain')
-          let dragData = null
-          try { dragData = JSON.parse(rawJson || rawText || '{}') } catch (e) { dragData = { url: rawText || '' } }
-          const resolvedUrl = dragData?.mediaUrl || dragData?.originalUrl || dragData?.fullUrl || dragData?.imageUrl || dragData?.url || dragData?.thumbnailUrl || dragData?.clip?.mediaUrl || dragData?.clip?.originalUrl || dragData?.clip?.fullUrl || dragData?.clip?.imageUrl || dragData?.clip?.url || dragData?.clip?.thumbnailUrl || ''
-          if (resolvedUrl) onDropMedia(resolvedUrl, dragData)
-        })
-    }
+    const { box, grid } = createMediaBox(parent, node, boxKey, {
+      makeDroppable,
+      onDropMedia
+    })
 
     if (!safeUrls.length) {
-      row.append('xhtml:div')
-        .style('font-size', '10px')
-        .style('color', '#9ca3af')
+      grid.append('xhtml:div')
         .style('display', 'flex')
         .style('align-items', 'center')
+        .style('justify-content', 'flex-start')
+        .style('font-size', '10px')
+        .style('color', '#9ca3af')
+        .style('grid-column', '1 / -1')
+        .style('height', '100%')
         .text(emptyText)
-      return row
+
+      return box
     }
 
     safeUrls.forEach(url => {
       const type = deriveMediaKind(url)
-      const wrap = row.append('xhtml:div')
+
+      const tile = grid.append('xhtml:div')
         .style('position', 'relative')
-        .style('flex', '0 0 auto')
-        .style('width', '56px')
-        .style('height', '56px')
+        .style('width', '100%')
+        .style('aspect-ratio', '1 / 1')
         .style('border-radius', '8px')
         .style('overflow', 'hidden')
         .style('border', '1px solid #e5e7eb')
@@ -1321,14 +1467,14 @@ export function renderTree(
         })
 
       if (type === 'image') {
-        wrap.append('xhtml:img')
+        tile.append('xhtml:img')
           .attr('src', url)
           .style('width', '100%')
           .style('height', '100%')
           .style('object-fit', 'cover')
           .style('display', 'block')
       } else if (type === 'video') {
-        wrap.append('xhtml:video')
+        tile.append('xhtml:video')
           .attr('src', url)
           .attr('autoplay', true)
           .attr('muted', true)
@@ -1339,7 +1485,7 @@ export function renderTree(
           .style('object-fit', 'cover')
           .style('display', 'block')
       } else {
-        wrap.append('xhtml:div')
+        tile.append('xhtml:div')
           .style('width', '100%')
           .style('height', '100%')
           .style('display', 'flex')
@@ -1351,15 +1497,16 @@ export function renderTree(
       }
 
       if (onStageClick) {
-        buildTinyButton(wrap, '↗', 'Add to staging', () => onStageClick(url, type))
+        buildTinyButton(tile, '↗', 'Add to staging', () => onStageClick(url, type))
           .style('position', 'absolute')
           .style('top', '4px')
           .style('right', '4px')
           .style('background', 'rgba(255,255,255,0.94)')
+          .style('z-index', '3')
       }
     })
 
-    return row
+    return box
   }
 
   function buildFunctionSection(parent, node, emit) {
@@ -1565,6 +1712,8 @@ export function renderTree(
         regenerated.negative_prompt = next.negative
         emit('regenerate-node', node.id, node.module_id, regenerated)
       })
+
+      
     })
 
     noteAreaWrap = sec.content.append('xhtml:div')
@@ -1642,6 +1791,8 @@ export function renderTree(
       renderThumbRow(contentRoot, state.inputUrls, {
         emptyText: 'Upload or drop input assets here',
         makeDroppable: true,
+        node,
+        boxKey: 'assets',
         onDropMedia: (resolvedUrl) => {
           if (!state.inputUrls.includes(resolvedUrl)) {
             state.inputUrls.push(resolvedUrl)
@@ -1676,6 +1827,8 @@ export function renderTree(
       renderThumbRow(root, outputUrls, {
         emptyText: 'No generated results yet',
         boxed: true,
+        node,
+        boxKey: 'results',
         onThumbClick: (url, type) => emit('open-preview', url, type),
         onStageClick: (url, type) => emit('add-clip', node, url, type)
       })
@@ -1684,43 +1837,37 @@ export function renderTree(
 
     // 2) 有 segment：外框尺寸完全按 Assets 的框来写
     if (hasSegment) {
-      const segmentBox = root.append('xhtml:div')
-        .style('position', 'relative')
+      const { box, grid } = createMediaBox(root, node, 'results')
 
-      applyMediaBoxStyle(segmentBox)
-
-      segmentBox.append('xhtml:div')
+      grid.append('xhtml:div')
         .attr('class', 'segment-empty-placeholder')
-        .style('position', 'absolute')
-        .style('inset', '0')
         .style('display', 'flex')
         .style('align-items', 'center')
-        .style('padding', '0 6px')
+        .style('justify-content', 'flex-start')
         .style('font-size', '10px')
         .style('color', '#9ca3af')
-        .style('pointer-events', 'none')
+        .style('grid-column', '1 / -1')
         .text('No generated results yet')
 
-      segmentBox.append('xhtml:div')
+      box.append('xhtml:div')
         .attr('id', `entities-${node.node_id || node.id}`)
         .style('position', 'absolute')
-        .style('inset', '0')
+        .style('inset', '6px')
         .style('display', 'flex')
         .style('flex-wrap', 'wrap')
         .style('align-content', 'flex-start')
         .style('gap', '6px')
-        .style('padding', '6px')
-        .style('box-sizing', 'border-box')
-        .style('width', '100%')
-        .style('height', '100%')
         .style('overflow', 'hidden')
+        .style('pointer-events', 'auto')
 
       return sec
     }
     // 3) 什么都没有：保持空文案
     renderThumbRow(root, [], {
       emptyText: 'No generated results yet',
-      boxed: true
+      boxed: true,
+      node,
+      boxKey: 'results'
     })
 
     return sec
@@ -2319,13 +2466,19 @@ function renderMediaContent(container, data) {
   })
 
   setTimeout(() => {
-        allNodesData.forEach(node => {
-          console.log(`检查节点 ${node.node_id} 的实体数据:`, node.assets?.segmented);
-            if (node.assets && node.assets.segmented) {
-                updateEntityDisplay(node.id, node.assets.segmented,node);
-            }
-        });
-    }, 100);
+    allNodesData.forEach(node => {
+      console.log(`检查节点 ${node.node_id} 的实体数据:`, node.assets?.segmented)
+      if (node.assets && node.assets.segmented) {
+        updateEntityDisplay(node.id, node.assets.segmented, node)
+
+        const host = document.getElementById(`entities-${node.node_id || node.id}`)
+        const placeholder = host?.parentElement?.querySelector('.segment-empty-placeholder')
+        if (host && placeholder && host.children.length > 0) {
+          placeholder.style.display = 'none'
+        }
+      }
+    })
+  }, 100)
 }
 
 
