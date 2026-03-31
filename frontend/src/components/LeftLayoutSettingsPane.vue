@@ -2,113 +2,82 @@
   <div class="container">
     <section class="settings-card">
       <header class="settings-header">
-        <h2 class="header-title">Layout & Colors</h2>
+        <div class="header-row">
+          <h2 class="header-title">Layout &amp; Colors</h2>
+          <button class="apply-btn" @click="applySettings">Apply</button>
+        </div>
       </header>
 
       <div class="settings-content">
-        <!-- Layout: Horizontal Spacing -->
-        <div class="form-group">
-          <label class="form-label">Horizontal Spacing</label>
-          <div class="layout-control">
-            <input
-              type="range"
-              min="40"
-              max="320"
-              step="10"
-              v-model.number="horizontalGap"
-              class="layout-slider"
-            />
-            <input
-              type="number"
-              min="40"
-              max="320"
-              step="10"
-              v-model.number="horizontalGap"
-              class="layout-input"
-            />
+        <div class="layout-row">
+          <label class="row-label">Horizontal</label>
+          <input
+            type="range"
+            min="40"
+            max="320"
+            step="10"
+            v-model.number="horizontalGap"
+            class="layout-slider"
+            :style="sliderStyle(horizontalGap, 40, 320)"
+          />
+          <input
+            type="number"
+            min="40"
+            max="320"
+            step="10"
+            v-model.number="horizontalGap"
+            class="layout-input"
+          />
+        </div>
+
+        <div class="layout-row">
+          <label class="row-label">Vertical</label>
+          <input
+            type="range"
+            min="60"
+            max="320"
+            step="10"
+            v-model.number="verticalGap"
+            class="layout-slider"
+            :style="sliderStyle(verticalGap, 60, 320)"
+          />
+          <input
+            type="number"
+            min="60"
+            max="320"
+            step="10"
+            v-model.number="verticalGap"
+            class="layout-input"
+          />
+        </div>
+
+        <div class="color-row">
+          <span class="row-label">Image Node</span>
+          <div class="picker-wrap">
+            <input type="color" v-model="imageColor" class="color-input" />
           </div>
         </div>
 
-        <!-- Layout: Vertical Spacing -->
-        <div class="form-group">
-          <label class="form-label">Vertical Spacing</label>
-          <div class="layout-control">
-            <input
-              type="range"
-              min="60"
-              max="320"
-              step="10"
-              v-model.number="verticalGap"
-              class="layout-slider"
-            />
-            <input
-              type="number"
-              min="60"
-              max="320"
-              step="10"
-              v-model.number="verticalGap"
-              class="layout-input"
-            />
+        <div class="color-row">
+          <span class="row-label">Video Node</span>
+          <div class="picker-wrap">
+            <input type="color" v-model="videoColor" class="color-input" />
           </div>
         </div>
 
-        <!-- Colors: Image Modality -->
-        <div class="form-group form-group-inline color-row-first">
-          <span class="form-label-inline">Image Modality Color</span>
-          <div class="color-control">
-            <input
-              type="color"
-              v-model="imageColor"
-              class="color-input"
-            />
-            <span class="color-hex">{{ imageColor }}</span>
+        <div class="color-row">
+          <span class="row-label">Audio Node</span>
+          <div class="picker-wrap">
+            <input type="color" v-model="audioColor" class="color-input" />
           </div>
         </div>
 
-        <!-- Colors: Video Modality -->
-        <div class="form-group form-group-inline">
-          <span class="form-label-inline">Video Modality Color</span>
-          <div class="color-control">
-            <input
-              type="color"
-              v-model="videoColor"
-              class="color-input"
-            />
-            <span class="color-hex">{{ videoColor }}</span>
+        <div class="color-row">
+          <span class="row-label">Merged Node</span>
+          <div class="picker-wrap">
+            <input type="color" v-model="overlapColor" class="color-input" />
           </div>
         </div>
-
-        <!-- Colors: Audio Modality -->
-        <div class="form-group form-group-inline">
-          <span class="form-label-inline">Audio Modality Color</span>
-          <div class="color-control">
-            <input
-              type="color"
-              v-model="audioColor"
-              class="color-input"
-            />
-            <span class="color-hex">{{ audioColor }}</span>
-          </div>
-        </div>
-
-        <!-- Colors: Overlap State -->
-        <div class="form-group form-group-inline">
-          <span class="form-label-inline">Overlap State Color</span>
-          <div class="color-control">
-            <input
-              type="color"
-              v-model="overlapColor"
-              class="color-input"
-            />
-            <span class="color-hex">{{ overlapColor }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="settings-footer">
-        <button class="apply-btn" @click="applySettings">
-          Apply Layout & Colors
-        </button>
       </div>
     </section>
   </div>
@@ -125,11 +94,9 @@ const emit = defineEmits<{
   }): void
 }>()
 
-// 默认值与当前 dagre 设置保持一致（nodesep=100, ranksep=120）
 const horizontalGap = ref(100)
 const verticalGap = ref(120)
 
-// 从全局 CSS 变量里读默认颜色（与你 style.css 里的 :root 保持一致）
 const imageColor = ref('#5F96DB')
 const videoColor = ref('#5ABF8E')
 const audioColor = ref('#E06C6E')
@@ -137,7 +104,6 @@ const overlapColor = ref('#7385A9')
 
 onMounted(() => {
   const rootStyle = getComputedStyle(document.documentElement)
-
   const img = rootStyle.getPropertyValue('--media-image').trim()
   const vid = rootStyle.getPropertyValue('--media-video').trim()
   const aud = rootStyle.getPropertyValue('--media-audio').trim()
@@ -150,98 +116,66 @@ onMounted(() => {
 })
 
 function normalizeColor(value: string): string {
-  const trimmed = value.trim()
-  // 现在你的 CSS 就是 #xxxxxx，直接返回即可
-  if (trimmed.startsWith('#')) return trimmed
-  return trimmed
+  return value.trim()
 }
 
-/**
- * 简单 soft 颜色生成：把颜色往白色拉近（factor 越大越浅）
- * 比如 factor=0.5 表示往 #ffffff 走一半
- */
-function makeSoftColor(hex: string, factor = 0.5): string {
+function makeSoftColor(hex: string, factor = 0.45): string {
   const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim())
-  if (!m) return hex // 非法就原样返回
+  if (!m) return hex
 
   const raw = m[1]
   const r = parseInt(raw.slice(0, 2), 16)
   const g = parseInt(raw.slice(2, 4), 16)
   const b = parseInt(raw.slice(4, 6), 16)
 
-  const mixChannel = (c: number) =>
-    Math.round(c + (255 - c) * factor)
-
-  const nr = mixChannel(r)
-  const ng = mixChannel(g)
-  const nb = mixChannel(b)
-
+  const mixChannel = (c: number) => Math.round(c + (255 - c) * factor)
   const toHex = (c: number) => c.toString(16).padStart(2, '0')
 
-  return '#' + toHex(nr) + toHex(ng) + toHex(nb)
+  return '#' + toHex(mixChannel(r)) + toHex(mixChannel(g)) + toHex(mixChannel(b))
+}
+
+function sliderStyle(value: number, min: number, max: number) {
+  const ratio = ((value - min) / (max - min)) * 100
+  return { '--fill': `${Math.max(0, Math.min(100, ratio))}%` }
 }
 
 const applySettings = () => {
-  // 1) 基础颜色写入 CSS 变量
   document.documentElement.style.setProperty('--media-image', imageColor.value)
   document.documentElement.style.setProperty('--media-video', videoColor.value)
   document.documentElement.style.setProperty('--media-audio', audioColor.value)
   document.documentElement.style.setProperty('--media-overlap', overlapColor.value)
 
-  // 2) soft 颜色写入 CSS 变量（给卡片标题、渐变、背景用）
-  const imageSoft = makeSoftColor(imageColor.value, 0.45)
-  const videoSoft = makeSoftColor(videoColor.value, 0.45)
-  const audioSoft = makeSoftColor(audioColor.value, 0.45)
-  const overlapSoft = makeSoftColor(overlapColor.value, 0.45)
+  document.documentElement.style.setProperty('--media-image-soft', makeSoftColor(imageColor.value, 0.45))
+  document.documentElement.style.setProperty('--media-video-soft', makeSoftColor(videoColor.value, 0.45))
+  document.documentElement.style.setProperty('--media-audio-soft', makeSoftColor(audioColor.value, 0.45))
+  document.documentElement.style.setProperty('--media-overlap-soft', makeSoftColor(overlapColor.value, 0.45))
 
-  document.documentElement.style.setProperty('--media-image-soft', imageSoft)
-  document.documentElement.style.setProperty('--media-video-soft', videoSoft)
-  document.documentElement.style.setProperty('--media-audio-soft', audioSoft)
-  document.documentElement.style.setProperty('--media-overlap-soft', overlapSoft)
-
-  // 3) 通过 window 事件广播布局 & 颜色更新（WorkflowTree.vue 监听）
-  window.dispatchEvent(
-    new CustomEvent('t2v-layout-updated', {
-      detail: {
-        horizontalGap: horizontalGap.value,
-        verticalGap: verticalGap.value,
-        colors: {
-          image: imageColor.value,
-          video: videoColor.value,
-          audio: audioColor.value,
-          overlap: overlapColor.value,
-        },
-      },
-    }),
-  )
-
-  // 4) 同时通过 emit 暴露给父组件（如果你那边有用）
-  emit('apply-layout-settings', {
+  const detail = {
     horizontalGap: horizontalGap.value,
     verticalGap: verticalGap.value,
     colors: {
       image: imageColor.value,
       video: videoColor.value,
       audio: audioColor.value,
-          overlap: overlapColor.value,
+      overlap: overlapColor.value,
     },
-  })
+  }
+
+  window.dispatchEvent(new CustomEvent('t2v-layout-updated', { detail }))
+  emit('apply-layout-settings', detail)
 }
 </script>
 
-
 <style scoped>
 * {
-  margin: 0;
-  padding: 0;
   box-sizing: border-box;
-  font-family: Inter, "SF Pro Text", "Segoe UI", Roboto, Arial, sans-serif;
 }
 
 .container {
   width: 100%;
   height: 100%;
   min-height: 0;
+  padding: 0 5px 4px;
 }
 
 .settings-card {
@@ -250,34 +184,64 @@ const applySettings = () => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: #f7f7f8;
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
+  background: #ffffff;
+  border: 1px solid #e7eaf0;
+  border-radius: 14px;
   overflow: hidden;
 }
 
 .settings-header {
-  padding: 12px 12px 10px;
-  border-bottom: 1px solid #eceef1;
-  background: #f7f7f8;
+  padding: 8px 12px 6px;
+  border-bottom: 1px solid #f1f3f6;
+  background: #ffffff;
+}
+
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .header-title {
-  font-size: 11px;
+  margin: 0;
+  font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #6b7280;
+  line-height: 1.2;
+  color: #2f3946;
+}
+
+.apply-btn {
+  height: 24px;
+  min-width: 52px;
+  padding: 0 10px;
+  border: 1px solid #e1e5eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #7d8796;
+  font-size: 11px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.apply-btn:hover {
+  background: #f6f7f9;
+  border-color: #d5dbe3;
+  color: #5e6878;
 }
 
 .settings-content {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 10px 12px;
+  padding: 10px 12px 12px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .settings-content::-webkit-scrollbar {
@@ -289,118 +253,135 @@ const applySettings = () => {
 }
 
 .settings-content::-webkit-scrollbar-thumb {
-  background: #d2d7de;
+  background: #d6dbe3;
   border-radius: 999px;
 }
 
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 0;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-}
-
-.form-group-inline {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.form-label,
-.form-label-inline {
-  font-size: 12px;
-  font-weight: 600;
-  color: #4b5563;
-  line-height: 1.35;
-}
-
-.layout-control {
+.layout-row,
+.color-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 58px;
-  gap: 10px;
+  grid-template-columns: 74px minmax(0, 1fr) 54px;
   align-items: center;
+  gap: 8px;
+  min-height: 26px;
+}
+
+.row-label {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: #4b5563;
+  white-space: nowrap;
 }
 
 .layout-slider {
   width: 100%;
-  accent-color: #8f96a3;
-  cursor: pointer;
+  margin: 0;
+  height: 16px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+
+.layout-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid #dde2e8;
+  background: linear-gradient(
+    to right,
+    rgba(148, 163, 184, 0.18) 0 var(--fill, 0%),
+    #ffffff var(--fill, 0%) 100%
+  );
+}
+
+.layout-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  margin-top: -3px;
+  border-radius: 50%;
+  border: 1px solid #cdd3dc;
+  background: #eef1f4;
+}
+
+.layout-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid #dde2e8;
+  background: #ffffff;
+}
+
+.layout-slider::-moz-range-progress {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.18);
+}
+
+.layout-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid #cdd3dc;
+  background: #eef1f4;
+}
+
+.layout-input,
+.picker-wrap {
+  width: 54px;
+  height: 24px;
+  border: 1px solid #dde2e8;
+  border-radius: 8px;
+  background: #ffffff;
+  justify-self: end;
 }
 
 .layout-input {
-  width: 100%;
-  height: 28px;
-  border: 1px solid #d6dbe2;
-  border-radius: 10px;
-  background: #ffffff;
-  color: #4b5563;
-  font-size: 11px;
-  font-weight: 700;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 400;
   text-align: center;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  padding: 0 4px;
 }
 
-.layout-input:focus {
-  border-color: #c7cdd6;
-  box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.12);
+.layout-input::-webkit-outer-spin-button,
+.layout-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
-.color-control {
+.layout-input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+.color-row .picker-wrap {
+  grid-column: 3;
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
+  justify-content: center;
 }
 
 .color-input {
-  width: 32px;
-  height: 22px;
-  padding: 2px;
-  border: 1px solid #d4d9e1;
-  border-radius: 8px;
-  background: #ffffff;
+  width: 42px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  background: transparent;
   cursor: pointer;
-  overflow: hidden;
 }
 
-.color-hex {
-  min-width: 72px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #7b8798;
-  text-align: right;
+.color-input::-webkit-color-swatch-wrapper {
+  padding: 0;
 }
 
-.settings-footer {
-  padding: 10px 12px 12px;
-  border-top: 1px solid #eceef1;
-  background: #f7f7f8;
+.color-input::-webkit-color-swatch {
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 2px;
 }
 
-.apply-btn {
-  width: 100%;
-  min-height: 32px;
-  border: 1px solid #cfd5dd;
-  border-radius: 10px;
-  background: #f1f3f5;
-  color: #4b5563;
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.apply-btn:hover {
-  background: #ffffff;
-  border-color: #c4ccd6;
-}
-
-.apply-btn:active {
-  transform: scale(0.99);
+.color-input::-moz-color-swatch {
+  border: 1px solid rgba(0, 0, 0, 0.16);
+  border-radius: 2px;
 }
 </style>
