@@ -28,7 +28,7 @@ from agents.master_agent import master_agent_node
 from agents.knowledge_agent import knowledge_agent_node
 from agents.workflow_agent import workflow_selector_node
 from agents.prompt_agent import prompt_agent_node
-from agents.final_prompt_agent import final_prompt_agent_node 
+from agents.final_prompt_agent_weight import final_prompt_agent_node 
 # --- 模式开关 ----
 APP_MODE = os.getenv('APP_MODE', 'server') 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -828,7 +828,7 @@ def create_node():
             parameters['seed'] = random.randint(0, 999999999999999)
     if module_id_from_frontend in REQUIRES_AUDIO_SEED_MODULES:
         if 'audio_seed' not in parameters or parameters['audio_seed'] is None:
-            parameters['audio_seed'] = random.randint(0, 4294967295)
+            parameters['audio_seed'] = random.randint(0, 999999999999999)
 
     workflow = None
     final_module_id = module_id_from_frontend
@@ -1124,6 +1124,7 @@ def create_node():
             if 'time' in parameters: workflow[size_node_id]["inputs"]["length"] = parameters['time'] * 8 + 1
             if 'speed' in parameters: workflow[size_node_id]["inputs"]["speed"] = parameters['speed']
             if 'camera_pose' in parameters: workflow[size_node_id]["inputs"]["camera_pose"] = parameters['camera_pose']
+            if 'seconds' in parameters: workflow[size_node_id]["inputs"]["seconds"] = parameters['seconds']
 
         # 执行工作流
         queued_prompt = queue_comfyui_prompt(workflow)

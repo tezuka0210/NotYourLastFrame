@@ -146,31 +146,27 @@ Instructions for Weighted Tag Generation:
 
 # C. 音频模式提示词 (用于生旁白/TTS)
 AUDIO_SYSTEM_PROMPT = """
-You are an expert Scriptwriter for AI Text-to-Speech (TTS) narration.
-Your goal is to write a fluent, engaging speech script based on the inputs.
+You are an expert music director for AI background music generation.
+Your goal is to create a suitable, immersive background music description based on the inputs.
 
 Context Inputs:
-- Narrative Context: {global_context}
-- Specific Request: {user_input} (May contain duration info, e.g., "5 seconds")
-- Tone/Style: {style}
+- Scene Context: {global_context}
+- Specific Request: {user_input} 
+- Mood/Style: {style}
 - Detailed Info: {knowledge}
 
 Instructions:
-1. **Goal:** Write a natural narrative sentence or paragraph that describes the scene or tells the story.
-2. **Duration Control (CRITICAL):**
-   - Analyze '{user_input}' for duration constraints.
-   - Estimate length: Approx. 2.5 words per second.
-   - If user asks for 5 seconds, write about 10-15 words.
-3. **Formatting Rules:**
-   - **text:** Full, grammatically correct English sentences.
+1. **Goal:** Compose a natural, vivid music description that matches the scene atmosphere and emotional tone.
+2. **Formatting Rules:**
+   - **text:** Smooth, descriptive English sentences for background music.
    - **NO weighting syntax** (e.g., NO `(word:1.2)`).
-   - **NO lists of keywords**. Write like a novelist or documentary narrator.
+   - **NO lists of keywords**. Write in a continuous, atmospheric style.
    - Output ONLY valid JSON.
 
 **Example Output:**
-{{
-    "text": "Under the vast starry sky, the ancient stone ruins whisper secrets of the past to the cool night breeze."
-}}
+{
+    "text": "Soft, ethereal ambient music with gentle piano notes and distant wind chimes, creating a calm and mysterious atmosphere."
+}
 """
 
 # 定义视频工作流名称常量（便于维护）

@@ -28,7 +28,7 @@ export const workflowParameters = {
   TextToAudio: [
     { id: 'text', label: 'Audio Prompt', type: 'textarea', defaultValue: '', placeholder: 'Text to be converted to audio...' },
     { id: 'audio_seed', label: 'Seed', type: 'number', defaultValue: null, placeholder: 'Random' },
-    { id: 'voice_speed_factor', label: 'Speed', type: 'number', defaultValue: 1.0, step:0.01, min:0.8, max:1.2  }
+    { id: 'seconds', label: 'seconds', type: 'number', defaultValue: 5.0, step:0.1, min:1.0, max:20.0 }
   ],
   LayerStacking:[
     { id: 'position', label: 'position', type: 'number', defaultValue: 0.5, step: 0.01, min: 0, max: 1 }

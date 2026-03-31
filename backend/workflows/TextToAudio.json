@@ -1,52 +1,119 @@
 {
-  "2": {
+  "3": {
     "inputs": {
-      "text": "This is the Zhonghe Guqin, crafted by Zhu Changfang, the second Prince of Lu in the Ming Dynasty.",
-      "model": "VibeVoice-1.5B",
-      "attention_type": "auto",
-      "quantize_llm": "full precision",
-      "free_memory_after_generate": true,
-      "diffusion_steps": 20,
-      "seed": 3396539148,
-      "cfg_scale": 1.3,
-      "use_sampling": false,
-      "temperature": 0.95,
-      "top_p": 0.95,
-      "max_words_per_chunk": 250,
-      "voice_speed_factor": 1,
-      "voice_to_clone": [
-        "5",
+      "seed": 446283056621299,
+      "steps": 50,
+      "cfg": 4.98,
+      "sampler_name": "dpmpp_3m_sde_gpu",
+      "scheduler": "exponential",
+      "denoise": 1,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "11",
         0
       ]
     },
-    "class_type": "VibeVoiceSingleSpeakerNode",
+    "class_type": "KSampler",
     "_meta": {
-      "title": "VibeVoice Single Speaker"
+      "title": "KSampler"
     }
   },
   "4": {
+    "inputs": {
+      "ckpt_name": "stable-audio-open-1.0.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "Checkpoint加载器（简易）"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "heaven church electronic dance music",
+      "clip": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "10",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码"
+    }
+  },
+  "10": {
+    "inputs": {
+      "clip_name": "t5-base.safetensors",
+      "type": "stable_audio",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "11": {
+    "inputs": {
+      "seconds": 27.6,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentAudio",
+    "_meta": {
+      "title": "Size_Setting"
+    }
+  },
+  "12": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE解码（音频）"
+    }
+  },
+  "19": {
     "inputs": {
       "filename_prefix": "audio/ComfyUI",
       "quality": "V0",
       "audioUI": "",
       "audio": [
-        "2",
+        "12",
         0
       ]
     },
     "class_type": "SaveAudioMP3",
     "_meta": {
-      "title": "Save Audio (MP3)"
-    }
-  },
-  "5": {
-    "inputs": {
-      "audio": "ComfyUI_00017_.mp3",
-      "audioUI": ""
-    },
-    "class_type": "LoadAudio",
-    "_meta": {
-      "title": "加载音频"
+      "title": "保存音频 (MP3)"
     }
   }
 }

@@ -683,7 +683,7 @@ export function renderTree(
       nodeHeight = 140
     } else if (cardType === 'audio' || isAudioMedia) {
       nodeWidth = 260
-      nodeHeight = hasPrompt ? 175 : 110
+      nodeHeight = 175 
     } else {
       nodeWidth = 260
       //if (hasMedia && hasPrompt) {
