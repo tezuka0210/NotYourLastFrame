@@ -18,12 +18,12 @@ const NODE_COLORS = {
   image:      'var(--media-image)',
   video:      'var(--media-video)',
   audio:      'var(--media-audio)',
-  overlap:    'var(--media-overlap, #7385A9)',
+  overlap:    'var(--media-overlap)',
 
   imageSoft:  'var(--media-image-soft)',
   videoSoft:  'var(--media-video-soft)',
   audioSoft:  'var(--media-audio-soft)',
-  overlapSoft:'var(--media-overlap-soft, #dbe2ee)',
+  overlapSoft:'var(--media-overlap-soft)',
 }
 
 // 允许在运行时刷新节点颜色（CSS 变量改变后调用）
@@ -1188,6 +1188,13 @@ export function renderTree(
     }
   }
 
+  function shouldShowPromptInput(node) {
+    const p = node?.parameters || {}
+    const hasPositive = typeof p.positive_prompt === 'string' && p.positive_prompt.trim() !== ''
+    const hasNegative = typeof p.negative_prompt === 'string' && p.negative_prompt.trim() !== ''
+    return !(hasPositive || hasNegative)
+  }
+
   function syncPromptState(node, next, emit) {
     if (!node.parameters) node.parameters = {}
     node.parameters.text = next.note || ''
@@ -1253,14 +1260,19 @@ function applyMediaBoxStyle(sel, boxState) {
     .style('border', '1px dashed #d1d5db')
     .style('border-radius', '8px')
     .style('background', '#ffffff')
-    .style('overflow', 'hidden')
+    .style('overflow', 'visible')
+    .style('padding-right', '18px')
+    .style('padding-bottom', '18px')
 }
 
 function buildMediaGrid(box, boxState) {
   return box.append('xhtml:div')
     .attr('class', 'media-box-grid')
     .style('position', 'absolute')
-    .style('inset', '6px')
+    .style('top', '6px')
+    .style('left', '6px')
+    .style('right', '16px')
+    .style('bottom', '16px')
     .style('display', 'grid')
     .style('grid-template-columns', `repeat(auto-fill, minmax(${boxState.tileMin}px, 1fr))`)
     .style('grid-auto-rows', '1fr')
@@ -1281,16 +1293,17 @@ function addMediaBoxResizeHandle(box, boxState) {
   const handle = box.append('xhtml:div')
     .attr('class', 'media-box-resize-handle')
     .style('position', 'absolute')
-    .style('right', '4px')
-    .style('bottom', '4px')
-    .style('width', '12px')
-    .style('height', '12px')
+    .style('right', '6px')
+    .style('bottom', '6px')
+    .style('width', '8px')
+    .style('height', '8px')
     .style('background', '#9ca3af')
     .style('clip-path', 'polygon(100% 0, 0 100%, 100% 100%)')
-    .style('cursor', 'nwse-resize')
+    .style('cursor', 'ns-resize')
     .style('opacity', '0')
     .style('transition', 'opacity 120ms ease')
-    .style('z-index', '4')
+    .style('z-index', '8')
+    .style('pointer-events', 'auto')
 
   box
     .on('mouseenter.media-box-handle', () => handle.style('opacity', '0.65'))
@@ -1562,6 +1575,7 @@ function addMediaBoxResizeHandle(box, boxState) {
 
     let noteArea
     let noteAreaWrap
+    let showPromptInput = shouldShowPromptInput(node)
     let positivePhrases = parseCueString(promptState.positive || promptState.note)
     let negativePhrases = parseCueString(promptState.negative)
     let positiveContainer, negativeContainer, positiveCount, negativeCount
@@ -1592,7 +1606,7 @@ function addMediaBoxResizeHandle(box, boxState) {
       list.forEach((phrase, idx) => {
         const row = container.append('xhtml:div')
           .style('display', 'grid')
-          .style('grid-template-columns', '1fr 44px 18px 18px')
+          .style('grid-template-columns', '1fr 18px 18px')
           .style('gap', '4px')
           .style('align-items', 'center')
           .style('margin-bottom', '4px')
@@ -1600,6 +1614,7 @@ function addMediaBoxResizeHandle(box, boxState) {
         row.append('xhtml:input')
           .attr('type', 'text')
           .attr('value', phrase.text || '')
+          .attr('class', 'phrase-input phrase-input-wide')
           .style('height', '24px')
           .style('border', '1px solid #e5e7eb')
           .style('border-radius', '6px')
@@ -1609,30 +1624,11 @@ function addMediaBoxResizeHandle(box, boxState) {
           .on('mousedown', ev => ev.stopPropagation())
           .on('input', function () {
             const next = [...listRefGetter()]
-            next[idx] = { ...next[idx], text: this.value }
-            listRefSetter(next)
-            syncPromptStateFromUI()
-          })
-
-        row.append('xhtml:input')
-          .attr('type', 'number')
-          .attr('min', '0.0')
-          .attr('max', '1.9')
-          .attr('step', '0.1')
-          .attr('value', Number.isFinite(phrase.weight) ? phrase.weight.toFixed(1) : '1.0')
-          .style('height', '24px')
-          .style('border', '1px solid #e5e7eb')
-          .style('border-radius', '6px')
-          .style('padding', '0 4px')
-          .style('font-size', '10px')
-          .style('background', '#ffffff')
-          .on('mousedown', ev => ev.stopPropagation())
-          .on('input', function () {
-            let v = parseFloat(this.value)
-            if (!Number.isFinite(v)) v = 1.0
-            v = Math.max(0.0, Math.min(1.9, v))
-            const next = [...listRefGetter()]
-            next[idx] = { ...next[idx], weight: v }
+            next[idx] = {
+              ...next[idx],
+              text: this.value,
+              weight: Number.isFinite(next[idx]?.weight) ? next[idx].weight : 1.0
+            }
             listRefSetter(next)
             syncPromptStateFromUI()
           })
@@ -1663,6 +1659,11 @@ function addMediaBoxResizeHandle(box, boxState) {
       buildTinyButton(controls, 'A', 'Agent assist', async () => {
         try {
           clearPrevAgentContext()
+
+          if (noteAreaWrap) {
+            noteAreaWrap.style('display', 'none')
+          }
+
           const mediaUrl = inputMediaResolver ? inputMediaResolver() : (getInputMediaUrls(node)[0] || '')
           const payload = {
             user_input: noteArea.property('value') || '',
@@ -1695,9 +1696,6 @@ function addMediaBoxResizeHandle(box, boxState) {
 
         syncPromptStateFromUI()
 
-        if (noteAreaWrap) {
-          noteAreaWrap.style('display', 'none')
-        }
         } catch (err) {
           console.error('Agent assist failed:', err)
         }
@@ -1717,7 +1715,7 @@ function addMediaBoxResizeHandle(box, boxState) {
     })
 
     noteAreaWrap = sec.content.append('xhtml:div')
-      .style('display', 'block')
+      .style('display', showPromptInput ? 'block' : 'none')
       .style('width', '100%')
 
     noteArea = noteAreaWrap.append('xhtml:textarea')
@@ -1911,15 +1909,30 @@ function addMediaBoxResizeHandle(box, boxState) {
       ev.stopPropagation()
       toggleSelectionForNode(svgElement, d, selectedIds, emit, { allowComposite: true, maxCount: 2 })
     })
+
     buildHeader(card, d)
-    addResizeHandle(card, d, svgElement, allNodesData)
-    const body = card.append('xhtml:div').style('flex', '1 1 auto').style('min-height', '0').style('display', 'flex').style('flex-direction', 'column').style('gap', '6px').style('padding', '6px').style('overflow-y', 'auto').style('overflow-x', 'hidden').style('width', '100%').style('box-sizing', 'border-box')
+
+    const body = card.append('xhtml:div')
+      .style('flex', '1 1 auto')
+      .style('min-height', '0')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+      .style('gap', '6px')
+      .style('padding', '6px')
+      .style('overflow-y', 'auto')
+      .style('overflow-x', 'hidden')
+      .style('width', '100%')
+      .style('box-sizing', 'border-box')
+
     buildFunctionSection(body, d, emit)
     buildAssetsSection(body, d, emit, state)
     buildPromptSection(body, d, emit, () => state.inputUrls[0] || '')
     buildResultsSection(body, d, emit, state)
     buildSettingsSection(body, d)
+
+    addResizeHandle(card, d, svgElement, allNodesData)
     addTooltip(gEl, d)
+
   }
 
   function renderUnifiedAudioNode(gEl, d, selectedIds, emit) {
@@ -1934,14 +1947,28 @@ function addMediaBoxResizeHandle(box, boxState) {
       toggleSelectionForNode(svgElement, d, selectedIds, emit, { allowComposite: true, maxCount: 2 })
     })
     buildHeader(card, d)
-    addResizeHandle(card, d, svgElement, allNodesData)
-    const body = card.append('xhtml:div').style('flex', '1 1 auto').style('min-height', '0').style('display', 'flex').style('flex-direction', 'column').style('gap', '6px').style('padding', '6px').style('overflow-y', 'auto').style('overflow-x', 'hidden').style('width', '100%').style('box-sizing', 'border-box')
+
+    const body = card.append('xhtml:div')
+      .style('flex', '1 1 auto')
+      .style('min-height', '0')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+      .style('gap', '6px')
+      .style('padding', '6px')
+      .style('overflow-y', 'auto')
+      .style('overflow-x', 'hidden')
+      .style('width', '100%')
+      .style('box-sizing', 'border-box')
+
     buildFunctionSection(body, d, emit)
     buildAssetsSection(body, d, emit, state)
     buildPromptSection(body, d, emit, () => state.inputUrls[0] || '')
     buildResultsSection(body, d, emit, state)
     buildSettingsSection(body, d)
+
+    addResizeHandle(card, d, svgElement, allNodesData)
     addTooltip(gEl, d)
+    
   }
 
 
@@ -2008,7 +2035,6 @@ function addMediaBoxResizeHandle(box, boxState) {
 
     // 顶部 header（节点标题 + 折叠/复制/删除）
     buildHeader(card, d)
-    addResizeHandle(card, d, svgElement, allNodesData)
     addRightClickMenu(card, d, emit)
 
     // ====== 主体：单栏，对话框风格 ======
@@ -2083,6 +2109,7 @@ function addMediaBoxResizeHandle(box, boxState) {
       //console.log('[IntentDraft] send:', d.id, value)
     })
 
+    addResizeHandle(card, d, svgElement, allNodesData)
     addTooltip(gEl, d)
   }
 
@@ -2158,7 +2185,6 @@ function renderCompositeNode(gEl, d, selectedIds, emit) {
 
   // 统一标题栏
   buildHeader(card, d)
-  addResizeHandle(card, d, svgElement, allNodesData)
 
   const body = card.append('xhtml:div')
     .style('flex', '1 1 auto')
@@ -2204,6 +2230,8 @@ function renderCompositeNode(gEl, d, selectedIds, emit) {
     .style('grid-template-columns', '1fr 1fr')
     .style('gap', '6px')
     .style('min-height', `${gridHeight}px`)
+
+  addResizeHandle(card, d, svgElement, allNodesData)
 
   visibleItems.forEach((item, idx) => {
     const tile = grid.append('xhtml:div')
@@ -2290,6 +2318,7 @@ function renderCompositeNode(gEl, d, selectedIds, emit) {
         .style('color', '#ffffff')
         .text(`+${remainingCount}`)
     }
+    
   })
 }
 // --- 辅助函数：渲染媒体内容（图片/音频/文本） ---
@@ -2486,16 +2515,18 @@ function addResizeHandle(card, node, svgElement, allNodesData) {
   const handle = card.append('xhtml:div')
     .attr('class', 'node-resize-handle')
     .style('position', 'absolute')
-    .style('width', '12px')
-    .style('height', '12px')
-    .style('right', '4px')
-    .style('bottom', '4px')
+    .style('width', '8px')
+    .style('height', '8px')
+    .style('right', '6px')
+    .style('bottom', '6px')
     .style('cursor', 'ns-resize')
     .style('background', '#9ca3af')
     .style('clip-path', 'polygon(100% 0, 0 100%, 100% 100%)')
     .style('opacity', '0')
     .style('transition', 'opacity 120ms ease')
-    .style('z-index', '3');
+    .style('z-index', '100000')
+    .style('pointer-events', 'auto')
+    .style('border-radius', '0')
 
   card.on('mouseenter.resize-handle', () => handle.style('opacity', '0.65'))
   card.on('mouseleave.resize-handle', () => handle.style('opacity', '0'))
@@ -2528,6 +2559,7 @@ function addResizeHandle(card, node, svgElement, allNodesData) {
   });
 }
 
+
 // === 最终修正版选择与合并逻辑 ===
 // 点击或方框选择节点
 function toggleNodeSelection(node, selectedIds, emit, svgElement = null) {
@@ -2546,7 +2578,7 @@ function mergeSelectedNodes(allNodesData, selectedIds, emit, svgElement = null) 
     id: generateUniqueId(),
     isComposite: true,
     combinedNodes: nodesToMerge,
-    displayName: 'Overlap',
+    displayName: 'Merged',
     module_id: 'CompositeNode'
   };
 

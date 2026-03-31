@@ -18,20 +18,19 @@ body {
   height: 100%;
 }
 
+
 :root {
-  /* === unified media colors, match NODE_COLORS 旧值 === */
-  --media-aux-border: #E5E7EB;  /* auxBorder */
+  --media-aux-border: #D8DADF;
 
-  --media-image: #5F96DB;     /* image #5F96DB */
-  --media-video: #5ABF8E;       /* video #5ABF8E*/
-  --media-audio: #E06C6E;       /* audio #E06C6E*/
+  --media-image: #f0e68c;
+  --media-video: #5ABF8E;
+  --media-audio: #E06C6E;
+  --media-overlap: #5F96DB;
 
-  /* soft tints for header / background */
-  --media-image-soft: #8FB7E8;  /* #8FB7E8*/
-  --media-video-soft: #8FD1B4; /* #8FD1B4*/
-  --media-audio-soft: #F4A7A8; /* #F4A7A8*/
-  --media-overlap: #b195f4;
-  --media-overlap-soft: #EDE9FE;
+  --media-image-soft: #faf3b9;
+  --media-video-soft: #c5eed9;
+  --media-audio-soft: #f5c1c3;
+  --media-overlap-soft: #D6E7FB;
 }
 
 /* ===================== workflow 节点卡片 ===================== */
@@ -641,6 +640,11 @@ body {
   background-color: #f3f4f6;
 }
 
+.phrase-input-wide {
+  width: 100%;
+  min-width: 0;
+}
+
 /* ========== Prompt 折叠小节：Positive / Negative Prompt 头部 ========== */
 
 /* .prompt-section {
@@ -1024,7 +1028,6 @@ body {
 
 /* 手柄图标：三点横向 grip */
 .node-resize-handle::before {
-  content: "⇵";
   font-size: 10px;
   line-height: 1;
   color: #6B7680;

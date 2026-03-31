@@ -15,7 +15,7 @@
           :disabled="!canMerge"
           @click.stop="mergeSelectedNodes(localSelectedIds)"
         >
-          Overlap
+          Merge
         </button>
         <button
           v-if="localSelectedIds.length > 0"
@@ -326,7 +326,7 @@ function buildCompositeNode(group, groupedNodes, allNodes) {
     sourceNodeIds: [...group.nodeIds],
     combinedNodes: groupedNodes.map(cloneNode),
     childrenIds: downstreamIds,
-    label: `Overlap · ${groupedNodes.length}`,
+    label: `Merged · ${groupedNodes.length}`,
     summary,
     assets: mergeNodeAssets(groupedNodes.map(n => n.assets || {})),
     linkColor: '#8b5cf6',
