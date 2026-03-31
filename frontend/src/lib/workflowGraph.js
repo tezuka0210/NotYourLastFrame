@@ -1232,25 +1232,51 @@ export function renderTree(
       .on('click', function (ev) { ev.stopPropagation(); if (onClick) onClick(ev) })
   }
 
-  function renderThumbRow(parent, urls, options = {}) {
-    const { emptyText = 'No media yet', onThumbClick = null, onStageClick = null, makeDroppable = false, onDropMedia = null } = options
-    const row = parent.append('xhtml:div')
+  function applyMediaBoxStyle(sel) {
+    return sel
       .style('display', 'flex')
       .style('flex-wrap', 'wrap')
       .style('align-content', 'flex-start')
       .style('gap', '6px')
       .style('overflow-x', 'hidden')
-      .style('padding', '2px 0')
-      .style('min-height', '56px')
+      .style('padding', '6px')
+      .style('height', '42px')
       .style('width', '100%')
       .style('box-sizing', 'border-box')
+      .style('border', '1px dashed #e5e7eb')
+      .style('border-radius', '8px')
+  }
 
-    if (makeDroppable) {
-      row.style('border', '1px dashed #e5e7eb')
-        .style('border-radius', '8px')
-        .style('padding', '6px')
+  function renderThumbRow(parent, urls, options = {}) {
+    const {
+      emptyText = 'No media yet',
+      onThumbClick = null,
+      onStageClick = null,
+      makeDroppable = false,
+      onDropMedia = null,
+      boxed = false
+    } = options
+
+    const safeUrls = Array.isArray(urls) ? urls : []
+
+    const row = parent.append('xhtml:div')
+
+    if (makeDroppable || boxed) {
+      applyMediaBoxStyle(row)
+    } else {
+      row
+        .style('display', 'flex')
+        .style('flex-wrap', 'wrap')
+        .style('align-content', 'flex-start')
+        .style('gap', '6px')
+        .style('overflow-x', 'hidden')
+        .style('padding', '2px 0')
         .style('width', '100%')
         .style('box-sizing', 'border-box')
+    }
+
+    if (makeDroppable) {
+      row
         .on('dragover', ev => { ev.preventDefault(); ev.stopPropagation(); row.style('border-color', '#94a3b8').style('background', '#f8fafc') })
         .on('dragleave', ev => { ev.preventDefault(); ev.stopPropagation(); row.style('border-color', '#e5e7eb').style('background', 'transparent') })
         .on('drop', ev => {
@@ -1266,12 +1292,17 @@ export function renderTree(
         })
     }
 
-    if (!urls.length) {
-      row.append('xhtml:div').style('font-size', '10px').style('color', '#9ca3af').style('display', 'flex').style('align-items', 'center').text(emptyText)
+    if (!safeUrls.length) {
+      row.append('xhtml:div')
+        .style('font-size', '10px')
+        .style('color', '#9ca3af')
+        .style('display', 'flex')
+        .style('align-items', 'center')
+        .text(emptyText)
       return row
     }
 
-    urls.forEach(url => {
+    safeUrls.forEach(url => {
       const type = deriveMediaKind(url)
       const wrap = row.append('xhtml:div')
         .style('position', 'relative')
@@ -1284,19 +1315,47 @@ export function renderTree(
         .style('background', '#f9fafb')
         .style('cursor', 'pointer')
         .on('mousedown', ev => ev.stopPropagation())
-        .on('click', ev => { ev.stopPropagation(); if (onThumbClick) onThumbClick(url, type) })
+        .on('click', ev => {
+          ev.stopPropagation()
+          if (onThumbClick) onThumbClick(url, type)
+        })
 
       if (type === 'image') {
-        wrap.append('xhtml:img').attr('src', url).style('width', '100%').style('height', '100%').style('object-fit', 'cover').style('display', 'block')
+        wrap.append('xhtml:img')
+          .attr('src', url)
+          .style('width', '100%')
+          .style('height', '100%')
+          .style('object-fit', 'cover')
+          .style('display', 'block')
       } else if (type === 'video') {
-        wrap.append('xhtml:video').attr('src', url).attr('autoplay', true).attr('muted', true).attr('loop', true).attr('playsinline', true).style('width', '100%').style('height', '100%').style('object-fit', 'cover').style('display', 'block')
+        wrap.append('xhtml:video')
+          .attr('src', url)
+          .attr('autoplay', true)
+          .attr('muted', true)
+          .attr('loop', true)
+          .attr('playsinline', true)
+          .style('width', '100%')
+          .style('height', '100%')
+          .style('object-fit', 'cover')
+          .style('display', 'block')
       } else {
-        wrap.append('xhtml:div').style('width', '100%').style('height', '100%').style('display', 'flex').style('align-items', 'center').style('justify-content', 'center').style('font-size', '18px').style('color', '#64748b').text('♪')
+        wrap.append('xhtml:div')
+          .style('width', '100%')
+          .style('height', '100%')
+          .style('display', 'flex')
+          .style('align-items', 'center')
+          .style('justify-content', 'center')
+          .style('font-size', '18px')
+          .style('color', '#64748b')
+          .text('♪')
       }
 
       if (onStageClick) {
         buildTinyButton(wrap, '↗', 'Add to staging', () => onStageClick(url, type))
-          .style('position', 'absolute').style('top', '4px').style('right', '4px').style('background', 'rgba(255,255,255,0.94)')
+          .style('position', 'absolute')
+          .style('top', '4px')
+          .style('right', '4px')
+          .style('background', 'rgba(255,255,255,0.94)')
       }
     })
 
@@ -1355,6 +1414,7 @@ export function renderTree(
     }
 
     let noteArea
+    let noteAreaWrap
     let positivePhrases = parseCueString(promptState.positive || promptState.note)
     let negativePhrases = parseCueString(promptState.negative)
     let positiveContainer, negativeContainer, positiveCount, negativeCount
@@ -1477,13 +1537,20 @@ export function renderTree(
             image_caption: data.image_caption || '',
             style: data.style || ''
           })
-          const note = data.message?.text || noteArea.property('value') || ''
-          noteArea.property('value', note)
-          positivePhrases = parseCueString(data.message?.positive || '')
-          negativePhrases = parseCueString(data.message?.negative || '')
-          buildPhraseEditor(positiveContainer, () => positivePhrases, v => { positivePhrases = v }, positiveCount, 'positive')
-          buildPhraseEditor(negativeContainer, () => negativePhrases, v => { negativePhrases = v }, negativeCount, 'negative')
-          syncPromptStateFromUI()
+        const note = data.message?.text || noteArea.property('value') || ''
+        noteArea.property('value', note)
+
+        positivePhrases = parseCueString(data.message?.positive || '')
+        negativePhrases = parseCueString(data.message?.negative || '')
+
+        buildPhraseEditor(positiveContainer, () => positivePhrases, v => { positivePhrases = v }, positiveCount, 'positive')
+        buildPhraseEditor(negativeContainer, () => negativePhrases, v => { negativePhrases = v }, negativeCount, 'negative')
+
+        syncPromptStateFromUI()
+
+        if (noteAreaWrap) {
+          noteAreaWrap.style('display', 'none')
+        }
         } catch (err) {
           console.error('Agent assist failed:', err)
         }
@@ -1500,7 +1567,11 @@ export function renderTree(
       })
     })
 
-    noteArea = sec.content.append('xhtml:textarea')
+    noteAreaWrap = sec.content.append('xhtml:div')
+      .style('display', 'block')
+      .style('width', '100%')
+
+    noteArea = noteAreaWrap.append('xhtml:textarea')
       .attr('class', 'thin-scroll')
       .style('width', '100%')
       .style('box-sizing', 'border-box')
@@ -1589,13 +1660,69 @@ export function renderTree(
 
   function buildResultsSection(parent, node, emit, state) {
     const sec = buildCollapsibleSection(parent, 'Results', true)
-    const root = sec.content.append('xhtml:div').style('display', 'flex').style('flex-direction', 'column').style('gap', '6px')
-    root.append('xhtml:div').style('font-size', '10px').style('font-weight', '600').style('color', '#6b7280').text('Generated')
-    renderThumbRow(root, state.outputUrls, { emptyText: 'No generated results yet', onThumbClick: (url, type) => emit('open-preview', url, type), onStageClick: (url, type) => emit('add-clip', node, url, type) })
-    if (node.assets && node.assets.segmented) {
-      root.append('xhtml:div').style('font-size', '10px').style('font-weight', '600').style('color', '#6b7280').text('Segments')
-      root.append('xhtml:div').attr('id', `entities-${node.node_id || node.id}`).style('display', 'flex').style('flex-wrap', 'wrap').style('gap', '6px').style('min-height', '40px')
+
+    const root = sec.content
+      .append('xhtml:div')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+      .style('gap', '6px')
+
+    const outputUrls = Array.isArray(state?.outputUrls) ? state.outputUrls : []
+    const hasOutput = outputUrls.length > 0
+    const hasSegment = !!(node.assets && node.assets.segmented)
+
+    // 1) 有生成结果：直接用和 Assets 同一套 renderThumbRow 逻辑
+    if (hasOutput) {
+      renderThumbRow(root, outputUrls, {
+        emptyText: 'No generated results yet',
+        boxed: true,
+        onThumbClick: (url, type) => emit('open-preview', url, type),
+        onStageClick: (url, type) => emit('add-clip', node, url, type)
+      })
+      return sec
     }
+
+    // 2) 有 segment：外框尺寸完全按 Assets 的框来写
+    if (hasSegment) {
+      const segmentBox = root.append('xhtml:div')
+        .style('position', 'relative')
+
+      applyMediaBoxStyle(segmentBox)
+
+      segmentBox.append('xhtml:div')
+        .attr('class', 'segment-empty-placeholder')
+        .style('position', 'absolute')
+        .style('inset', '0')
+        .style('display', 'flex')
+        .style('align-items', 'center')
+        .style('padding', '0 6px')
+        .style('font-size', '10px')
+        .style('color', '#9ca3af')
+        .style('pointer-events', 'none')
+        .text('No generated results yet')
+
+      segmentBox.append('xhtml:div')
+        .attr('id', `entities-${node.node_id || node.id}`)
+        .style('position', 'absolute')
+        .style('inset', '0')
+        .style('display', 'flex')
+        .style('flex-wrap', 'wrap')
+        .style('align-content', 'flex-start')
+        .style('gap', '6px')
+        .style('padding', '6px')
+        .style('box-sizing', 'border-box')
+        .style('width', '100%')
+        .style('height', '100%')
+        .style('overflow', 'hidden')
+
+      return sec
+    }
+    // 3) 什么都没有：保持空文案
+    renderThumbRow(root, [], {
+      emptyText: 'No generated results yet',
+      boxed: true
+    })
+
     return sec
   }
 
