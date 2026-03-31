@@ -437,9 +437,9 @@ function addRightClickMenu(card, d, emit) {
         })
     }
 
-    // addMenuItem('Create Child Draft', () => {
-    //   emit('create-card', d, 'AddText', 'util')
-    // })
+    addMenuItem('Create Child Draft', () => {
+      emit('create-card', d, 'AddText', 'util')
+    })
 
     addMenuItem('Add Re-authoring Plan', () => {
       emit('create-card', d, 'AddWorkflow', 'util')
@@ -2137,13 +2137,11 @@ function renderMediaContent(container, data) {
             });
         };
 
-        // addMenuItem('Create Child Draft', () => {
-        //   // 和原来小加号的行为保持一致
-        //   emit('create-card', d, 'AddText', 'util');
-        // });
-        addMenuItem('Add Re-authoring Plan', () => {
-          emit('create-card', d, 'AddWorkflow', 'util');
+        addMenuItem('Create Child Draft', () => {
+          // 和原来小加号的行为保持一致
+          emit('create-card', d, 'AddText', 'util');
         });
+
         const closeMenu = () => {
           menu.remove();
           document.removeEventListener('click', closeMenu);
