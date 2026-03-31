@@ -1260,14 +1260,19 @@ function applyMediaBoxStyle(sel, boxState) {
     .style('border', '1px dashed #d1d5db')
     .style('border-radius', '8px')
     .style('background', '#ffffff')
-    .style('overflow', 'hidden')
+    .style('overflow', 'visible')
+    .style('padding-right', '18px')
+    .style('padding-bottom', '18px')
 }
 
 function buildMediaGrid(box, boxState) {
   return box.append('xhtml:div')
     .attr('class', 'media-box-grid')
     .style('position', 'absolute')
-    .style('inset', '6px')
+    .style('top', '6px')
+    .style('left', '6px')
+    .style('right', '16px')
+    .style('bottom', '16px')
     .style('display', 'grid')
     .style('grid-template-columns', `repeat(auto-fill, minmax(${boxState.tileMin}px, 1fr))`)
     .style('grid-auto-rows', '1fr')
@@ -1288,16 +1293,17 @@ function addMediaBoxResizeHandle(box, boxState) {
   const handle = box.append('xhtml:div')
     .attr('class', 'media-box-resize-handle')
     .style('position', 'absolute')
-    .style('right', '4px')
-    .style('bottom', '4px')
-    .style('width', '12px')
-    .style('height', '12px')
+    .style('right', '6px')
+    .style('bottom', '6px')
+    .style('width', '8px')
+    .style('height', '8px')
     .style('background', '#9ca3af')
     .style('clip-path', 'polygon(100% 0, 0 100%, 100% 100%)')
-    .style('cursor', 'nwse-resize')
+    .style('cursor', 'ns-resize')
     .style('opacity', '0')
     .style('transition', 'opacity 120ms ease')
-    .style('z-index', '4')
+    .style('z-index', '8')
+    .style('pointer-events', 'auto')
 
   box
     .on('mouseenter.media-box-handle', () => handle.style('opacity', '0.65'))
@@ -1921,15 +1927,30 @@ function addMediaBoxResizeHandle(box, boxState) {
       ev.stopPropagation()
       toggleSelectionForNode(svgElement, d, selectedIds, emit, { allowComposite: true, maxCount: 2 })
     })
+
     buildHeader(card, d)
-    addResizeHandle(card, d, svgElement, allNodesData)
-    const body = card.append('xhtml:div').style('flex', '1 1 auto').style('min-height', '0').style('display', 'flex').style('flex-direction', 'column').style('gap', '6px').style('padding', '6px').style('overflow-y', 'auto').style('overflow-x', 'hidden').style('width', '100%').style('box-sizing', 'border-box')
+
+    const body = card.append('xhtml:div')
+      .style('flex', '1 1 auto')
+      .style('min-height', '0')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+      .style('gap', '6px')
+      .style('padding', '6px')
+      .style('overflow-y', 'auto')
+      .style('overflow-x', 'hidden')
+      .style('width', '100%')
+      .style('box-sizing', 'border-box')
+
     buildFunctionSection(body, d, emit)
     buildAssetsSection(body, d, emit, state)
     buildPromptSection(body, d, emit, () => state.inputUrls[0] || '')
     buildResultsSection(body, d, emit, state)
     buildSettingsSection(body, d)
+
+    addResizeHandle(card, d, svgElement, allNodesData)
     addTooltip(gEl, d)
+
   }
 
   function renderUnifiedAudioNode(gEl, d, selectedIds, emit) {
@@ -1944,14 +1965,28 @@ function addMediaBoxResizeHandle(box, boxState) {
       toggleSelectionForNode(svgElement, d, selectedIds, emit, { allowComposite: true, maxCount: 2 })
     })
     buildHeader(card, d)
-    addResizeHandle(card, d, svgElement, allNodesData)
-    const body = card.append('xhtml:div').style('flex', '1 1 auto').style('min-height', '0').style('display', 'flex').style('flex-direction', 'column').style('gap', '6px').style('padding', '6px').style('overflow-y', 'auto').style('overflow-x', 'hidden').style('width', '100%').style('box-sizing', 'border-box')
+
+    const body = card.append('xhtml:div')
+      .style('flex', '1 1 auto')
+      .style('min-height', '0')
+      .style('display', 'flex')
+      .style('flex-direction', 'column')
+      .style('gap', '6px')
+      .style('padding', '6px')
+      .style('overflow-y', 'auto')
+      .style('overflow-x', 'hidden')
+      .style('width', '100%')
+      .style('box-sizing', 'border-box')
+
     buildFunctionSection(body, d, emit)
     buildAssetsSection(body, d, emit, state)
     buildPromptSection(body, d, emit, () => state.inputUrls[0] || '')
     buildResultsSection(body, d, emit, state)
     buildSettingsSection(body, d)
+
+    addResizeHandle(card, d, svgElement, allNodesData)
     addTooltip(gEl, d)
+    
   }
 
 
@@ -2018,7 +2053,6 @@ function addMediaBoxResizeHandle(box, boxState) {
 
     // 顶部 header（节点标题 + 折叠/复制/删除）
     buildHeader(card, d)
-    addResizeHandle(card, d, svgElement, allNodesData)
     addRightClickMenu(card, d, emit)
 
     // ====== 主体：单栏，对话框风格 ======
@@ -2093,6 +2127,7 @@ function addMediaBoxResizeHandle(box, boxState) {
       //console.log('[IntentDraft] send:', d.id, value)
     })
 
+    addResizeHandle(card, d, svgElement, allNodesData)
     addTooltip(gEl, d)
   }
 
@@ -2168,7 +2203,6 @@ function renderCompositeNode(gEl, d, selectedIds, emit) {
 
   // 统一标题栏
   buildHeader(card, d)
-  addResizeHandle(card, d, svgElement, allNodesData)
 
   const body = card.append('xhtml:div')
     .style('flex', '1 1 auto')
@@ -2214,6 +2248,8 @@ function renderCompositeNode(gEl, d, selectedIds, emit) {
     .style('grid-template-columns', '1fr 1fr')
     .style('gap', '6px')
     .style('min-height', `${gridHeight}px`)
+
+  addResizeHandle(card, d, svgElement, allNodesData)
 
   visibleItems.forEach((item, idx) => {
     const tile = grid.append('xhtml:div')
@@ -2300,6 +2336,7 @@ function renderCompositeNode(gEl, d, selectedIds, emit) {
         .style('color', '#ffffff')
         .text(`+${remainingCount}`)
     }
+    
   })
 }
 // --- 辅助函数：渲染媒体内容（图片/音频/文本） ---
@@ -2496,16 +2533,18 @@ function addResizeHandle(card, node, svgElement, allNodesData) {
   const handle = card.append('xhtml:div')
     .attr('class', 'node-resize-handle')
     .style('position', 'absolute')
-    .style('width', '12px')
-    .style('height', '12px')
-    .style('right', '4px')
-    .style('bottom', '4px')
+    .style('width', '8px')
+    .style('height', '8px')
+    .style('right', '6px')
+    .style('bottom', '6px')
     .style('cursor', 'ns-resize')
     .style('background', '#9ca3af')
     .style('clip-path', 'polygon(100% 0, 0 100%, 100% 100%)')
     .style('opacity', '0')
     .style('transition', 'opacity 120ms ease')
-    .style('z-index', '3');
+    .style('z-index', '100000')
+    .style('pointer-events', 'auto')
+    .style('border-radius', '0')
 
   card.on('mouseenter.resize-handle', () => handle.style('opacity', '0.65'))
   card.on('mouseleave.resize-handle', () => handle.style('opacity', '0'))
@@ -2537,6 +2576,7 @@ function addResizeHandle(card, node, svgElement, allNodesData) {
     window.addEventListener('mouseup', onMouseUp);
   });
 }
+
 
 // === 最终修正版选择与合并逻辑 ===
 // 点击或方框选择节点
