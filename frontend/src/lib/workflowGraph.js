@@ -824,6 +824,22 @@ export function renderTree(
   // initSelectionBox(svg, svgElement, allNodesData, emit);
 
 
+  function getSegmentHostKey(node) {
+    return node?.id
+  }
+
+  function hasSegmentData(node) {
+    return !!(
+      node &&
+      node.assets &&
+      node.assets.segmented &&
+      (
+        Array.isArray(node.assets.segmented)
+        || (typeof node.assets.segmented === 'object' && Object.keys(node.assets.segmented).length > 0)
+      )
+    )
+  }
+
 
   function getLinkStyle() {
     return { color: defaultLinkColor, id: 'url(#arrowhead-default)' }
@@ -1818,9 +1834,10 @@ function addMediaBoxResizeHandle(box, boxState) {
 
     const outputUrls = Array.isArray(state?.outputUrls) ? state.outputUrls : []
     const hasOutput = outputUrls.length > 0
-    const hasSegment = !!(node.assets && node.assets.segmented)
+    const hasSegment = hasSegmentData(node)
+    const segmentHostKey = getSegmentHostKey(node)
 
-    // 1) 有生成结果：直接用和 Assets 同一套 renderThumbRow 逻辑
+    // 1) 先显示 generate 结果
     if (hasOutput) {
       renderThumbRow(root, outputUrls, {
         emptyText: 'No generated results yet',
@@ -1830,12 +1847,29 @@ function addMediaBoxResizeHandle(box, boxState) {
         onThumbClick: (url, type) => emit('open-preview', url, type),
         onStageClick: (url, type) => emit('add-clip', node, url, type)
       })
-      return sec
+    } else {
+      renderThumbRow(root, [], {
+        emptyText: 'No generated results yet',
+        boxed: true,
+        node,
+        boxKey: 'results'
+      })
     }
 
-    // 2) 有 segment：外框尺寸完全按 Assets 的框来写
+    // 2) 再显示 segment 结果
     if (hasSegment) {
-      const { box, grid } = createMediaBox(root, node, 'results')
+      const segWrap = root.append('xhtml:div')
+        .style('display', 'flex')
+        .style('flex-direction', 'column')
+        .style('gap', '4px')
+
+      segWrap.append('xhtml:div')
+        .style('font-size', '10px')
+        .style('font-weight', '600')
+        .style('color', '#6b7280')
+        .text('Segments')
+
+      const { box, grid } = createMediaBox(segWrap, node, 'segments')
 
       grid.append('xhtml:div')
         .attr('class', 'segment-empty-placeholder')
@@ -1845,28 +1879,20 @@ function addMediaBoxResizeHandle(box, boxState) {
         .style('font-size', '10px')
         .style('color', '#9ca3af')
         .style('grid-column', '1 / -1')
-        .text('No generated results yet')
+        .text('No segmented entities yet')
 
       box.append('xhtml:div')
-        .attr('id', `entities-${node.node_id || node.id}`)
+        .attr('id', `entities-${segmentHostKey}`)
         .style('position', 'absolute')
         .style('inset', '6px')
         .style('display', 'flex')
         .style('flex-wrap', 'wrap')
         .style('align-content', 'flex-start')
         .style('gap', '6px')
-        .style('overflow', 'hidden')
+        .style('overflow', 'auto')
         .style('pointer-events', 'auto')
-
-      return sec
+        .style('z-index', '2')
     }
-    // 3) 什么都没有：保持空文案
-    renderThumbRow(root, [], {
-      emptyText: 'No generated results yet',
-      boxed: true,
-      node,
-      boxKey: 'results'
-    })
 
     return sec
   }
@@ -2496,18 +2522,23 @@ function renderMediaContent(container, data) {
 
   setTimeout(() => {
     allNodesData.forEach(node => {
-      console.log(`检查节点 ${node.node_id} 的实体数据:`, node.assets?.segmented)
-      if (node.assets && node.assets.segmented) {
-        updateEntityDisplay(node.id, node.assets.segmented, node)
+      console.log(`检查节点 ${node.id} 的实体数据:`, node.assets?.segmented)
 
-        const host = document.getElementById(`entities-${node.node_id || node.id}`)
-        const placeholder = host?.parentElement?.querySelector('.segment-empty-placeholder')
-        if (host && placeholder && host.children.length > 0) {
-          placeholder.style.display = 'none'
-        }
+      if (!hasSegmentData(node)) return
+
+      const segmentHostKey = getSegmentHostKey(node)
+
+      updateEntityDisplay(segmentHostKey, node.assets.segmented, node)
+
+      const host = document.getElementById(`entities-${segmentHostKey}`)
+      const placeholder = host?.parentElement?.querySelector('.segment-empty-placeholder')
+
+      if (host && placeholder && host.children.length > 0) {
+        placeholder.style.display = 'none'
       }
     })
   }, 100)
+  
 }
 
 
