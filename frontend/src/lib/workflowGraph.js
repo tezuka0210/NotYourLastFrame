@@ -2535,36 +2535,111 @@ function renderMediaContent(container, data) {
 
       const host = document.getElementById(`entities-${segmentHostKey}`)
       const placeholder = host?.parentElement?.querySelector('.segment-empty-placeholder')
-
       if (!host) return
 
-      if (host && host.children.length > 0) {
-        if (placeholder) placeholder.style.display = 'none'
-
-        host.style.display = 'flex'
-        host.style.flexWrap = 'wrap'
-        host.style.alignContent = 'flex-start'
-        host.style.gap = '6px'
-        host.style.overflow = 'auto'
-
-        Array.from(host.children).forEach(child => {
-          child.style.width = '56px'
-          child.style.height = '56px'
-          child.style.flex = '0 0 auto'
-          child.style.boxSizing = 'border-box'
-          child.style.overflow = 'hidden'
-          child.style.borderRadius = '8px'
-
-          const img = child.querySelector('img')
-          if (img) {
-            img.style.width = '100%'
-            img.style.height = '100%'
-            img.style.objectFit = 'cover'
-            img.style.display = 'block'
-          }
-        })
+      if (host.children.length > 0 && placeholder) {
+        placeholder.style.display = 'none'
       }
 
+      // 宿主容器：仅负责排布
+      host.style.display = 'flex'
+      host.style.flexWrap = 'wrap'
+      host.style.alignContent = 'flex-start'
+      host.style.gap = '6px'
+      host.style.overflow = 'auto'
+
+      const hoverColor = getNodeBorderColor(node)
+
+      Array.from(host.children).forEach((child) => {
+        // ===== tile 基础样式 =====
+        child.style.width = '56px'
+        child.style.height = '56px'
+        child.style.flex = '0 0 auto'
+        child.style.position = 'relative'
+        child.style.overflow = 'hidden'
+        child.style.boxSizing = 'border-box'
+        child.style.borderRadius = '12px'
+        child.style.border = '1px solid #d1d5db'
+        child.style.background = '#ffffff'
+        child.style.boxShadow = 'none'
+        child.style.transform = 'none'
+        child.style.transition = 'border-color 120ms ease, border-width 120ms ease'
+        child.style.zIndex = '1'
+
+        // ===== 媒体元素：不放大，不外溢 =====
+        const mediaEl = child.querySelector('img, video, canvas')
+        if (mediaEl) {
+          mediaEl.style.display = 'block'
+          mediaEl.style.width = '100%'
+          mediaEl.style.height = '100%'
+          mediaEl.style.objectFit = 'contain'
+          mediaEl.style.outline = 'none'
+          mediaEl.style.border = 'none'
+          mediaEl.style.borderRadius = '12px'
+          mediaEl.style.background = '#ffffff'
+          mediaEl.style.transform = 'none'
+          mediaEl.style.transition = 'none'
+          mediaEl.style.pointerEvents = 'none'
+        }
+
+        // ===== 删除按钮：如果没有就创建；有就复用 =====
+        let removeBtn =
+          child.querySelector('.remove-btn') ||
+          child.querySelector('.delete-btn') ||
+          child.querySelector('[data-action="delete"]') ||
+          child.querySelector('button')
+
+        if (!removeBtn) {
+          removeBtn = document.createElement('button')
+          removeBtn.type = 'button'
+          removeBtn.textContent = '×'
+          removeBtn.className = 'remove-btn'
+          removeBtn.setAttribute('data-action', 'delete')
+          child.appendChild(removeBtn)
+        } else {
+          removeBtn.classList.add('remove-btn')
+        }
+
+        // 只定位，不覆盖你全局 .remove-btn 的视觉样式
+        removeBtn.style.position = 'absolute'
+        removeBtn.style.top = '4px'
+        removeBtn.style.right = '4px'
+        removeBtn.style.left = 'auto'
+        removeBtn.style.bottom = 'auto'
+        removeBtn.style.opacity = '0'
+        removeBtn.style.pointerEvents = 'none'
+        removeBtn.style.zIndex = '20'
+
+        // 防止重复绑定
+        if (!removeBtn.dataset.segmentHoverBound) {
+          removeBtn.dataset.segmentHoverBound = '1'
+
+          removeBtn.addEventListener('mousedown', (ev) => {
+            ev.stopPropagation()
+          })
+        }
+
+        // ===== hover：只改细黄色边框，不放大 =====
+        child.onmouseenter = () => {
+          child.style.borderColor = hoverColor
+          child.style.borderWidth = '1.5px'
+          child.style.boxShadow = 'none'
+          child.style.transform = 'none'
+
+          removeBtn.style.opacity = '0.95'
+          removeBtn.style.pointerEvents = 'auto'
+        }
+
+        child.onmouseleave = () => {
+          child.style.borderColor = '#d1d5db'
+          child.style.borderWidth = '1px'
+          child.style.boxShadow = 'none'
+          child.style.transform = 'none'
+
+          removeBtn.style.opacity = '0'
+          removeBtn.style.pointerEvents = 'none'
+        }
+      })
     })
   }, 100)
 
