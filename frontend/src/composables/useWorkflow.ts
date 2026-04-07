@@ -398,6 +398,22 @@ function toggleNodeCollapse(nodeId: string) {
       if (!finalAssets) {
         throw new Error('未获取到任何上传的媒体信息');
       }
+
+      const localNode = allNodes.value.find(n => n.id === nodeId);
+      if (localNode) {
+        localNode.assets = finalAssets;
+        const nextMedia: any[] = [];
+        const pushGroup = (group: any, source: 'input' | 'output') => {
+          if (!group) return;
+          (group.images || []).forEach((path: string) => nextMedia.push({ rawPath: path, url: makeFullUrl(path)!, type: 'image', source }));
+          (group.videos || []).forEach((path: string) => nextMedia.push({ rawPath: path, url: makeFullUrl(path)!, type: 'video', source }));
+          (group.audio || []).forEach((path: string) => nextMedia.push({ rawPath: path, url: makeFullUrl(path)!, type: 'audio', source }));
+        };
+        pushGroup(finalAssets.input, 'input');
+        pushGroup(finalAssets.output, 'output');
+        localNode.media = nextMedia;
+        allNodes.value = [...allNodes.value];
+      }
     } catch (error: any) {
       console.error("更新节点媒体失败:", error);
       alert(`更新失败: ${error.message}`);

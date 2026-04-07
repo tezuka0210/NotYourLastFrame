@@ -386,6 +386,14 @@ export function useStitching(props, emit) {
     draggedOver.value = null
   }
 
+  function isClipCompatibleWithTrack(clip, trackType) {
+    if (!clip || !trackType) return false
+    if (trackType === 'video') return clip.type === 'image' || clip.type === 'video'
+    if (trackType === 'audio') return clip.type === 'audio'
+    if (trackType === 'buffer') return true
+    return false
+  }
+
   /**
    * 在某个 item 上松手：
    * - 同轨道：重排（video / audio / buffer 内部重排）
@@ -426,6 +434,13 @@ export function useStitching(props, emit) {
 
       const [moved] = bufferList.splice(src.index, 1)
       if (!moved) return
+      if (!isClipCompatibleWithTrack(moved, targetTrack)) {
+        bufferList.splice(src.index, 0, moved)
+        console.warn(`类型不匹配：${moved.type} 不能拖到 ${targetTrack} 轨道`)
+        draggedOver.value = null
+        draggedClip.value = null
+        return
+      }
 
       // 在目标轨道指定 index 插入
       targetList.splice(targetIndex, 0, moved)
@@ -497,6 +512,13 @@ export function useStitching(props, emit) {
 
       const [moved] = bufferList.splice(src.index, 1)
       if (!moved) return
+      if (!isClipCompatibleWithTrack(moved, targetTrack)) {
+        bufferList.splice(src.index, 0, moved)
+        console.warn(`类型不匹配：${moved.type} 不能拖到 ${targetTrack} 轨道`)
+        isDraggingOverContainer.value = null
+        draggedClip.value = null
+        return
+      }
 
       targetList.push(moved)
 

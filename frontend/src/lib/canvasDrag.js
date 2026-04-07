@@ -958,7 +958,7 @@ export function initCanvasDrag() {
     const borderColor = normalizeHexColor(regionColor);
     const borderStyle = temp ? 'dashed' : 'solid';
 
-    el.style.border = `2px ${borderStyle} ${borderColor}`;
+    el.style.border = `1px ${borderStyle} ${borderColor}`;
     el.style.background = temp ? 'rgba(255,255,255,0.12)' : 'transparent';
     el.style.boxShadow = temp
       ? 'inset 0 0 0 1px rgba(255,255,255,0.18)'
@@ -2426,6 +2426,7 @@ export function initCanvasDrag() {
       height: exportH,
       aspectRatio: exportW / exportH,
       source: 'canvas-export',
+      mediaType: 'image',
       exportType: type,
       createdAt: ts
     };
@@ -2777,7 +2778,7 @@ export function initCanvasDrag() {
       width:100px;
       height:auto;
       display:block;
-      border:1px solid rgba(100,116,139,0.42);
+      border:0.5px solid rgba(100,116,139,0.32);
       border-radius:4px;
       cursor:grab;
       z-index:10;

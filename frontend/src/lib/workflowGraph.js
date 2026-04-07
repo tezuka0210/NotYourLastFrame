@@ -1165,6 +1165,65 @@ export function renderTree(
     return [...(a.images || []), ...(a.videos || []), ...(a.audio || [])].filter(Boolean)
   }
 
+  function getInputMediaState(node, state) {
+    const input = node?.assets?.input || {}
+    const imageUrls = Array.isArray(input.images) ? [...input.images] : []
+    const videoUrls = Array.isArray(input.videos) ? [...input.videos] : []
+    const audioUrls = Array.isArray(input.audio) ? [...input.audio] : []
+    const allUrls = Array.isArray(state?.inputUrls) && state.inputUrls.length
+      ? [...state.inputUrls]
+      : [...imageUrls, ...videoUrls, ...audioUrls]
+
+    return { imageUrls, videoUrls, audioUrls, allUrls }
+  }
+
+  function syncNodeInputAssets(node, mediaState) {
+    if (!node.assets) node.assets = {}
+    if (!node.assets.input) node.assets.input = {}
+    node.assets.input.images = [...(mediaState.imageUrls || [])]
+    node.assets.input.videos = [...(mediaState.videoUrls || [])]
+    node.assets.input.audio = [...(mediaState.audioUrls || [])]
+    mediaState.allUrls = [
+      ...(mediaState.imageUrls || []),
+      ...(mediaState.videoUrls || []),
+      ...(mediaState.audioUrls || []),
+    ]
+    return mediaState.allUrls
+  }
+
+  function fileNameFromUrl(url = '', fallbackBase = 'asset') {
+    const safeUrl = String(url || '').split('?')[0].split('#')[0]
+    const tail = safeUrl.split('/').pop() || ''
+    if (tail && tail.includes('.')) return tail
+    const kind = deriveMediaKind(url)
+    if (kind === 'video') return `${fallbackBase}.mp4`
+    if (kind === 'audio') return `${fallbackBase}.mp3`
+    return `${fallbackBase}.png`
+  }
+
+  async function urlToUploadableFile(url, fallbackName = 'asset.png') {
+    const safeUrl = String(url || '').trim()
+    if (!safeUrl) return null
+
+    if (safeUrl.startsWith('data:')) {
+      const match = safeUrl.match(/^data:([^;,]+)?(;base64)?,/)
+      const mime = match && match[1] ? match[1] : 'image/png'
+      const res = await fetch(safeUrl)
+      const blob = await res.blob()
+      const ext = mime.split('/')[1] || 'png'
+      const fileName = fallbackName.includes('.') ? fallbackName : `${fallbackName}.${ext}`
+      return new File([blob], fileName, { type: mime })
+    }
+
+    if (safeUrl.startsWith('blob:')) {
+      const res = await fetch(safeUrl)
+      const blob = await res.blob()
+      return new File([blob], fallbackName, { type: blob.type || 'application/octet-stream' })
+    }
+
+    return null
+  }
+
   function getCompositeSourceItems(compositeNode) {
     const members = compositeNode?.combinedNodes || []
     const items = []
@@ -1238,7 +1297,7 @@ export function renderTree(
         const files = Array.from(this.files || [])
         if (!files.length) return
         const localUrls = files.map(file => URL.createObjectURL(file))
-        onLocalUrls(localUrls)
+        onLocalUrls(localUrls, files)
         emit('upload-media', node.id, files)
         this.value = ''
       })
@@ -1847,12 +1906,33 @@ function addMediaBoxResizeHandle(box, boxState) {
 
   
   function buildAssetsSection(parent, node, emit, state) {
+    const mediaState = getInputMediaState(node, state)
+    state.inputUrls = [...mediaState.allUrls]
+
+    const appendLocalUrls = (urls = [], forcedType = null) => {
+      const list = Array.isArray(urls) ? urls : []
+      list.forEach(url => {
+        const resolvedType = forcedType || deriveMediaKind(url)
+        if (resolvedType === 'video') {
+          if (!mediaState.videoUrls.includes(url)) mediaState.videoUrls.push(url)
+        } else if (resolvedType === 'audio') {
+          if (!mediaState.audioUrls.includes(url)) mediaState.audioUrls.push(url)
+        } else {
+          if (!mediaState.imageUrls.includes(url)) mediaState.imageUrls.push(url)
+        }
+      })
+      state.inputUrls = syncNodeInputAssets(node, mediaState)
+    }
+
     const sec = buildCollapsibleSection(parent, 'Assets', true, (controls) => {
-      const uploader = createHiddenUploader(controls, node, emit, (localUrls) => {
-        state.inputUrls = [...state.inputUrls, ...localUrls]
-        if (!node.assets) node.assets = {}
-        if (!node.assets.input) node.assets.input = {}
-        node.assets.input.images = [...state.inputUrls]
+      const uploader = createHiddenUploader(controls, node, emit, (localUrls, files = []) => {
+        files.forEach((file, idx) => {
+          appendLocalUrls([localUrls[idx]], file?.type?.startsWith('video/')
+            ? 'video'
+            : file?.type?.startsWith('audio/')
+              ? 'audio'
+              : 'image')
+        })
         renderRow()
       })
       buildTinyButton(controls, '+', 'Upload assets', () => uploader.node().click())
@@ -1867,13 +1947,17 @@ function addMediaBoxResizeHandle(box, boxState) {
         makeDroppable: true,
         node,
         boxKey: 'assets',
-        onDropMedia: (resolvedUrl) => {
-          if (!state.inputUrls.includes(resolvedUrl)) {
-            state.inputUrls.push(resolvedUrl)
-            if (!node.assets) node.assets = {}
-            if (!node.assets.input) node.assets.input = {}
-            node.assets.input.images = [...state.inputUrls]
-            renderRow()
+        onDropMedia: async (resolvedUrl, dragData = {}) => {
+          const resolvedType = dragData?.type || dragData?.clip?.type || deriveMediaKind(resolvedUrl)
+          appendLocalUrls([resolvedUrl], resolvedType)
+          renderRow()
+
+          const uploadFile = await urlToUploadableFile(
+            resolvedUrl,
+            fileNameFromUrl(resolvedUrl, `asset-${resolvedType}`)
+          )
+          if (uploadFile) {
+            emit('upload-media', node.id, [uploadFile])
           }
         },
         onThumbClick: (url, type) => emit('open-preview', url, type)
